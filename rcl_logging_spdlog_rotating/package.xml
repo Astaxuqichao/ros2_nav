@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>rcl_logging_spdlog_rotating</name>
+  <version>0.0.1</version>
+  <description>Custom rotating async spdlog backend for ROS2</description>
+
+  <maintainer email="you@todo.com">you</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rcl_logging_interface</depend>
+  <depend>rcutils</depend>
+  <depend>spdlog</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

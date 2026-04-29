@@ -1,0 +1,13 @@
+<library path="navflex_cmdbehavior">
+  <class name="navflex_cmdbehavior/CmdBehavior"
+         type="navflex_cmdbehavior::CmdBehavior"
+         base_class_type="nav2_core::Behavior">
+    <description>
+      A recovery behavior that drives the robot based on a runtime command string.
+      Command format: "linear:&lt;distance_m&gt;" or "rotate:&lt;angle_deg&gt;".
+      Positive distance = forward, negative = backward.
+      Positive angle = CCW (left), negative = CW (right).
+      Speed configured via parameters: linear_vel [m/s], angular_vel [rad/s].
+    </description>
+  </class>
+</library>

@@ -1,0 +1,385 @@
+<?xml version="1.0"?>
+<!--
+  Groot2 / BehaviorTree.CPP v3 node model for navflex_bt_nodes.
+  Load this file in Groot via: File -> Load palette from file.
+
+  Node ID: NavflexGetPathAction
+  Wraps:   nav2_msgs::action::ComputePathToPose (server: compute_path_to_pose)
+
+  Input ports  – mirror the ComputePathToPose.action goal fields.
+  Output ports – extend nav2_behavior_tree::ComputePathToPose with
+                 `outcome` (uint8 error code) and `message` (string).
+-->
+<root>
+  <TreeNodesModel>
+
+    <Action ID="NavflexGetPathAction">
+      <!-- ── Inputs (ComputePathToPose.action goal) ── -->
+      <input_port name="goal"
+                  type="geometry_msgs/PoseStamped">
+        Destination pose to plan to
+      </input_port>
+      <input_port name="start"
+                  type="geometry_msgs/PoseStamped">
+        Override start pose (only used when use_start=true)
+      </input_port>
+      <input_port name="planner_id"
+                  type="string"
+                  default="GridBased">
+        Planner plugin ID (must match a key in planner_plugins)
+      </input_port>
+      <input_port name="use_start"
+                  type="bool"
+                  default="false">
+        If true, use the start port instead of current robot pose
+      </input_port>
+      <input_port name="tolerance"
+                  type="double"
+                  default="0.5">
+        Goal tolerance in metres
+      </input_port>
+      <!-- ── BtActionNode base ports ── -->
+      <input_port name="server_name"
+                  type="string"
+                  default="compute_path_to_pose">
+        Action server name
+      </input_port>
+      <input_port name="server_timeout"
+                  type="double"
+                  default="10.0">
+        Timeout waiting for the action server (seconds)
+      </input_port>
+
+      <!-- ── Outputs ── -->
+      <output_port name="path"
+                   type="nav_msgs/Path">
+        Computed global path
+      </output_port>
+      <output_port name="outcome"
+                   type="uint8">
+        Result code: 0=SUCCESS 50=FAILURE 51=CANCELED 52=INVALID_START
+        53=INVALID_GOAL 54=BLOCKED_START 55=BLOCKED_GOAL 56=NO_PATH_FOUND
+        57=PAT_EXCEEDED 58=EMPTY_PATH 59=TF_ERROR 60=NOT_INITIALIZED
+      </output_port>
+      <output_port name="message"
+                   type="string">
+        Human-readable result description
+      </output_port>
+    </Action>
+
+    <Action ID="NavflexCancelGetPath">
+      <!-- BtCancelActionNode base ports -->
+      <input_port name="server_name"
+                  type="string"
+                  default="compute_path_to_pose">
+        Action server name to cancel
+      </input_port>
+      <input_port name="server_timeout"
+                  type="double"
+                  default="10.0">
+        Timeout waiting for the action server (seconds)
+      </input_port>
+    </Action>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!--  NavflexExePathAction                                               -->
+    <!--  Wraps: nav2_msgs::action::FollowPath (server: follow_path)        -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <Action ID="NavflexExePathAction">
+      <!-- ── Inputs (FollowPath.action goal) ── -->
+      <input_port name="path"
+                  type="nav_msgs/Path">
+        Global path to follow
+      </input_port>
+      <input_port name="controller_id"
+                  type="string"
+                  default="FollowPath">
+        Controller plugin ID (must match a key in controller_plugins)
+      </input_port>
+      <input_port name="goal_checker_id"
+                  type="string"
+                  default="goal_checker">
+        Goal checker plugin ID
+      </input_port>
+      <!-- ── BtActionNode base ports ── -->
+      <input_port name="server_name"
+                  type="string"
+                  default="follow_path">
+        Action server name
+      </input_port>
+      <input_port name="server_timeout"
+                  type="double"
+                  default="10.0">
+        Timeout waiting for the action server (seconds)
+      </input_port>
+      <!-- ── Outputs ── -->
+      <output_port name="outcome"
+                   type="uint32">
+        Result code: 0=SUCCESS 100=FAILURE 101=CANCELED 102=NO_VALID_CMD
+        103=PAT_EXCEEDED 104=COLLISION 105=OSCILLATION 106=ROBOT_STUCK
+        107=MISSED_GOAL 108=MISSED_PATH 109=BLOCKED_GOAL 110=BLOCKED_PATH
+        111=INVALID_PATH 112=TF_ERROR 113=NOT_INITIALIZED 114=INVALID_PLUGIN
+        115=INTERNAL_ERROR 116=OUT_OF_MAP 117=MAP_ERROR 118=STOPPED
+      </output_port>
+      <output_port name="message"
+                   type="string">
+        Human-readable result description
+      </output_port>
+      <output_port name="final_pose"
+                   type="geometry_msgs/PoseStamped">
+        Final robot pose reported by the controller
+      </output_port>
+      <output_port name="dist_to_goal"
+                   type="float">
+        Distance to goal at completion
+      </output_port>
+      <output_port name="angle_to_goal"
+                   type="float">
+        Angle to goal at completion
+      </output_port>
+      <output_port name="feedback_outcome"
+                   type="uint32_t">
+        Live outcome code from latest controller cycle (SUCCESS=0 / NO_VALID_CMD=102 / ...)
+      </output_port>
+      <output_port name="feedback_message"
+                   type="string">
+        Live message from latest controller cycle
+      </output_port>
+      <output_port name="feedback_distance_to_goal"
+                   type="float">
+        Live distance-to-goal from controller feedback (metres)
+      </output_port>
+      <output_port name="feedback_speed"
+                   type="float">
+        Live robot speed from controller feedback (m/s)
+      </output_port>
+    </Action>
+
+    <Action ID="NavflexCancelExePath">
+      <!-- BtCancelActionNode base ports -->
+      <input_port name="server_name"
+                  type="string"
+                  default="follow_path">
+        Action server name to cancel
+      </input_port>
+      <input_port name="server_timeout"
+                  type="double"
+                  default="10.0">
+        Timeout waiting for the action server (seconds)
+      </input_port>
+    </Action>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!--  NavflexRecoveryAction                                              -->
+    <!--  Wraps: nav2_msgs::action::DummyBehavior (server: behavior_action) -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <Action ID="NavflexRecoveryAction">
+      <!-- ── Inputs (DummyBehavior.action goal) ── -->
+      <input_port name="behavior"
+                  type="string"
+                  default="spin">
+        Name of the recovery behavior plugin to execute
+      </input_port>
+      <input_port name="command"
+                  type="string"
+                  default="">
+        Free-form command string forwarded to the behavior plugin
+      </input_port>
+      <!-- ── BtActionNode base ports ── -->
+      <input_port name="server_name"
+                  type="string"
+                  default="behavior_action">
+        Action server name
+      </input_port>
+      <input_port name="server_timeout"
+                  type="double"
+                  default="10.0">
+        Timeout waiting for the action server (seconds)
+      </input_port>
+      <!-- ── Outputs ── -->
+      <output_port name="outcome"
+                   type="uint32">
+        Result code: 0=SUCCESS 150=FAILURE 151=CANCELED 152=PAT_EXCEEDED
+        153=TF_ERROR 154=NOT_INITIALIZED 155=INVALID_PLUGIN
+        156=INTERNAL_ERROR 157=STOPPED 158=IMPASSABLE
+      </output_port>
+      <output_port name="message"
+                   type="string">
+        Human-readable result description
+      </output_port>
+      <output_port name="used_plugin"
+                   type="string">
+        Name of the behavior plugin that was actually used
+      </output_port>
+    </Action>
+
+    <Action ID="NavflexCancelRecovery">
+      <!-- BtCancelActionNode base ports -->
+      <input_port name="server_name"
+                  type="string"
+                  default="behavior_action">
+        Action server name to cancel
+      </input_port>
+      <input_port name="server_timeout"
+                  type="double"
+                  default="10.0">
+        Timeout waiting for the action server (seconds)
+      </input_port>
+    </Action>
+
+    <Action ID="NavflexCheckPointService">
+      <input_port name="service_name"
+                  type="string"
+                  default="check_point_cost">
+        Service name
+      </input_port>
+      <input_port name="server_timeout"
+                  type="double"
+                  default="1.0">
+        Server timeout (seconds)
+      </input_port>
+      <input_port name="point"
+                  type="geometry_msgs/PointStamped">
+        Point to check
+      </input_port>
+      <input_port name="costmap"
+                  type="uint8"
+                  default="2">
+        Costmap id: 1 local, 2 global
+      </input_port>
+      <output_port name="state"
+                   type="uint8">
+        Point state: FREE/INSCRIBED/LETHAL/UNKNOWN/OUTSIDE
+      </output_port>
+      <output_port name="cost"
+                   type="uint32">
+        Cell cost at point
+      </output_port>
+    </Action>
+
+    <Action ID="NavflexCheckPoseService">
+      <input_port name="service_name"
+                  type="string"
+                  default="check_pose_cost">
+        Service name
+      </input_port>
+      <input_port name="server_timeout"
+                  type="double"
+                  default="1.0">
+        Server timeout (seconds)
+      </input_port>
+      <input_port name="pose"
+                  type="geometry_msgs/PoseStamped">
+        Pose to check
+      </input_port>
+      <input_port name="safety_dist"
+                  type="float"
+                  default="0.0">
+        Safety padding around robot footprint
+      </input_port>
+      <input_port name="lethal_cost_mult"
+                  type="float"
+                  default="0.0">
+        Lethal cost multiplier
+      </input_port>
+      <input_port name="inscrib_cost_mult"
+                  type="float"
+                  default="0.0">
+        Inscribed cost multiplier
+      </input_port>
+      <input_port name="unknown_cost_mult"
+                  type="float"
+                  default="0.0">
+        Unknown cost multiplier
+      </input_port>
+      <input_port name="costmap"
+                  type="uint8"
+                  default="2">
+        Costmap id: 1 local, 2 global
+      </input_port>
+      <input_port name="current_pose"
+                  type="bool"
+                  default="false">
+        Use current robot pose
+      </input_port>
+      <output_port name="state"
+                   type="uint8">
+        Pose state: FREE/INSCRIBED/LETHAL/UNKNOWN/OUTSIDE
+      </output_port>
+      <output_port name="cost"
+                   type="uint32">
+        Accumulated pose cost
+      </output_port>
+    </Action>
+
+    <Action ID="NavflexCheckPathService">
+      <input_port name="service_name"
+                  type="string"
+                  default="check_path_cost">
+        Service name
+      </input_port>
+      <input_port name="server_timeout"
+                  type="double"
+                  default="1.0">
+        Server timeout (seconds)
+      </input_port>
+      <input_port name="path"
+                  type="nav_msgs/Path">
+        Path to check
+      </input_port>
+      <input_port name="safety_dist"
+                  type="float"
+                  default="0.0">
+        Safety padding around robot footprint
+      </input_port>
+      <input_port name="lethal_cost_mult"
+                  type="float"
+                  default="0.0">
+        Lethal cost multiplier
+      </input_port>
+      <input_port name="inscrib_cost_mult"
+                  type="float"
+                  default="0.0">
+        Inscribed cost multiplier
+      </input_port>
+      <input_port name="unknown_cost_mult"
+                  type="float"
+                  default="0.0">
+        Unknown cost multiplier
+      </input_port>
+      <input_port name="costmap"
+                  type="uint8"
+                  default="2">
+        Costmap id: 1 local, 2 global
+      </input_port>
+      <input_port name="return_on"
+                  type="uint8"
+                  default="0">
+        Stop checking if state >= return_on
+      </input_port>
+      <input_port name="skip_poses"
+                  type="uint8"
+                  default="0">
+        Skip N poses between checks
+      </input_port>
+      <input_port name="path_cells_only"
+                  type="bool"
+                  default="false">
+        Check only path cells and ignore footprint
+      </input_port>
+      <output_port name="last_checked"
+                   type="uint32">
+        Last checked pose index
+      </output_port>
+      <output_port name="state"
+                   type="uint8">
+        Worst path state: FREE/INSCRIBED/LETHAL/UNKNOWN/OUTSIDE
+      </output_port>
+      <output_port name="cost"
+                   type="uint32">
+        Accumulated path cost
+      </output_port>
+    </Action>
+
+  </TreeNodesModel>
+</root>
