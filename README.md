@@ -53,3 +53,6 @@ ros2 run navflex_costmap_nav nav_test.py
 ```
 
 在 RViz 中使用 **2D Goal Pose** 工具发布目标点，客户端将依次调用 `ComputePathToPose` 和 `FollowPath`。
+
+## TODO
+1. 行为树适配nav2_bt_navigator，加入
