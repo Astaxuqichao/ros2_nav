@@ -1,11 +1,24 @@
 # navflex_costmap_nav
 
-NavFlex 导航框架核心包，基于 Nav2 插件体系，提供规划（Planner）、控制（Controller）和行为（Behavior）三个 action server。
+NavFlex 导航框架核心包，基于 Nav2 插件体系，提供规划（Planner）、控制（Controller）和行为（Behavior）三个 action server，并支持 nav2_route 路网导航。
 
 ## 构建
 
+### 依赖：ros2_nav 与 navigation2
+
+克隆本仓库及所有依赖：
+
 ```bash
-cd ~/humble_ws/navflex_ws/ros2_nav
+cd ~/humble_ws/navflex_ws
+git clone https://github.com/Astaxuqichao/ros2_nav.git -b main
+git clone https://github.com/Astaxuqichao/navigation2.git -b humble
+git clone https://github.com/SteveMacenski/spatio_temporal_voxel_layer.git -b humble
+```
+
+### 编译
+
+```bash
+cd ~/humble_ws/navflex_ws
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 source install/setup.bash
 ```
@@ -55,13 +68,66 @@ ros2 launch navflex_costmap_nav navigation_launch_test.launch.py
 | `log_level` | `info` | 日志级别（debug/info/warn/error） |
 | `use_respawn` | `False` | 节点崩溃后是否自动重启 |
 | `namespace` | `` | 命名空间 |
+| `use_route_server` | `False` | 是否同时启动 nav2_route 路网服务器 |
+| `graph_filepath` | `nav2_route/graphs/sample_graph.geojson` | 路网图文件路径 |
 
-示例（使用仿真时钟，debug 日志）：
+示例（启用路网服务器，使用仿真时钟）：
 ```bash
 ros2 launch navflex_costmap_nav navigation_launch_test.launch.py \
-  use_sim_time:=true \
-  log_level:=debug
+  use_route_server:=True \
+  graph_filepath:=/path/to/your_graph.geojson \
+  use_sim_time:=true
 ```
+
+#### 生命周期节点管理
+
+- 默认只管理 `navflex_costmap_nav`
+- 启用 `use_route_server:=True` 时，`route_server` 会加入**同一个** `lifecycle_manager_navigation` 统一管理
+
+---
+
+## 路网导航（nav2_route）
+
+### 工作原理
+
+`nav2_route` 使用 **Dijkstra 算法**在预定义的拓扑图（GeoJSON 格式）上搜索最优路径，再通过 `FollowPath` 控制器执行：
+
+1. 从 TF 获取机器人当前位置，通过最近邻 BFS 找到图中最近节点
+2. Dijkstra 搜索最优节点-边序列，代价由 `DistanceScorer`（距离）和 `DynamicEdgesScorer`（动态障碍）计算
+3. 将图搜索结果转换为稠密 `nav_msgs/Path`
+4. 交给 `FollowPath` 控制器执行
+
+### RViz 可视化
+
+| Topic | 类型 | 说明 |
+|-------|------|------|
+| `/route_graph` | `visualization_msgs/MarkerArray` | 路网图（节点+边） |
+| `/route_plan` | `nav_msgs/Path` | 最新规划路径 |
+
+两个 topic 均使用 `TRANSIENT_LOCAL` QoS，在 RViz 中订阅时需将 **Durability** 设为 `Transient Local`。
+
+### 交互式导航脚本
+
+启动导航栈后，使用 `route_nav.py` 交互式输入目标点：
+
+```bash
+# 需先启动带路网服务器的导航栈
+ros2 launch navflex_costmap_nav navigation_launch_test.launch.py use_route_server:=True
+
+# 启动交互式导航客户端
+ros2 run navflex_costmap_nav route_nav.py
+```
+
+输入格式：
+```
+输入目标点 (x y [yaw]) 或 q 退出: 2.0 3.0
+输入目标点 (x y [yaw]) 或 q 退出: 5.0 1.0 1.57
+输入目标点 (x y [yaw]) 或 q 退出: q
+```
+
+- `yaw` 单位为弧度，可选，默认 `0.0`
+- 输入新目标时若机器人正在执行，自动取消旧任务
+- 规划成功后路径发布至 `/route_plan` topic
 
 ---
 
@@ -97,6 +163,13 @@ ros2 action send_goal /follow_path nav2_msgs/action/FollowPath \
 ```bash
 ros2 action send_goal /compute_path_to_pose nav2_msgs/action/ComputePathToPose \
   "{goal: {header: {frame_id: 'map'}, pose: {position: {x: 1.0, y: 0.0}, orientation: {w: 1.0}}}, planner_id: ''}"
+```
+
+### ComputeRoute action（路网规划）
+
+```bash
+ros2 action send_goal /compute_route nav2_msgs/action/ComputeRoute \
+  '{use_poses: true, use_start: false, goal: {header: {frame_id: map}, pose: {position: {x: 2.0, y: 3.0}, orientation: {w: 1.0}}}}'
 ```
 
 ---

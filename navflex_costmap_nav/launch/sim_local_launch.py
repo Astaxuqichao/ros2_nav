@@ -62,7 +62,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'map_file',
             default_value=os.path.join(
-                get_package_share_directory('nav2_bringup'), 'maps', 'map1.yaml'),
+                get_package_share_directory('navflex_costmap_nav'), 'maps', 'map1.yaml'),
             description='Path to the map file'
         ),
 

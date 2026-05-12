@@ -87,7 +87,8 @@ install(TARGETS costmap_nav_node
 
 install(
   PROGRAMS
-  scripts/nav_test.py  # <== 你写的 Python 脚本路径
+  scripts/nav_test.py
+  scripts/route_nav.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -100,6 +101,8 @@ install(TARGETS navflex_costmap_nav
 
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY params DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY maps DESTINATION share/${PROJECT_NAME})
+
 
 # 安装头文件
 install(DIRECTORY include/
