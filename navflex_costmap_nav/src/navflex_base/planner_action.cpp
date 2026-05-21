@@ -144,10 +144,11 @@ void PlannerAction::runImpl(const GoalHandlePtr& goal_handle,
         break;
 
       case PlannerExecution::STOPPED:
-        RCLCPP_DEBUG_STREAM(rclcpp::get_logger(name_),
-                            "planner state: stopped");
-        RCLCPP_WARN_STREAM(rclcpp::get_logger(name_),
-                           "Planning has been stopped rigorously!");
+        RCLCPP_WARN(rclcpp::get_logger(name_),
+                    "[PlannerAction] STOPPED: start=(%.3f, %.3f) goal=(%.3f, %.3f) tolerance=%.3fm",
+                    start_pose.pose.position.x, start_pose.pose.position.y,
+                    goal.goal.pose.position.x, goal.goal.pose.position.y,
+                    tolerance);
         result->outcome = ActionToPose::Result::STOPPED;
         result->message = "Planning has been stopped rigorously";
         goal_handle->abort(result);
@@ -169,10 +170,21 @@ void PlannerAction::runImpl(const GoalHandlePtr& goal_handle,
         // in progress
       case PlannerExecution::PLANNING:
         if (execution.isPatienceExceeded()) {
-          RCLCPP_INFO_STREAM(
-              rclcpp::get_logger(name_),
-              "Global planner patience has been exceeded! Cancel planning...");
+          RCLCPP_ERROR(rclcpp::get_logger(name_),
+                       "[PlannerAction] Single makePlan() call exceeded patience (%.1fs)! "
+                       "Aborting. start=(%.3f, %.3f) goal=(%.3f, %.3f)",
+                       execution.getPatience(),
+                       start_pose.pose.position.x, start_pose.pose.position.y,
+                       goal.goal.pose.position.x, goal.goal.pose.position.y);
+          // Request execution to stop (sets should_exit_ + cancel_ flags).
+          // makePlan may still be blocking in the plugin, but the action
+          // server must not be held hostage — report failure now.
+          execution.stop();
           execution.cancel();
+          result->outcome = ActionToPose::Result::PAT_EXCEEDED;
+          result->message = "Planning patience exceeded while waiting for makePlan";
+          goal_handle->abort(result);
+          planner_active = false;
         } else {
           RCLCPP_DEBUG_THROTTLE(rclcpp::get_logger(name_), *node_->get_clock(),
                                 2000, "planner state: planning");
@@ -190,8 +202,11 @@ void PlannerAction::runImpl(const GoalHandlePtr& goal_handle,
             "planner state: found plan with cost: " << execution.getCost());
 
         if (plan.empty()) {
-          RCLCPP_ERROR_STREAM(rclcpp::get_logger(name_),
-                              "Global planner returned an empty path!");
+          RCLCPP_ERROR(rclcpp::get_logger(name_),
+                       "[PlannerAction] EMPTY_PATH: start=(%.3f, %.3f) goal=(%.3f, %.3f) tolerance=%.3fm",
+                       start_pose.pose.position.x, start_pose.pose.position.y,
+                       goal.goal.pose.position.x, goal.goal.pose.position.y,
+                       tolerance);
           result->outcome = ActionToPose::Result::EMPTY_PATH;
           result->message = "Global planner returned an empty path";
           goal_handle->abort(result);
@@ -204,6 +219,12 @@ void PlannerAction::runImpl(const GoalHandlePtr& goal_handle,
         result->outcome = execution.getOutcome();
         result->message = execution.getMessage();
         result->cost = execution.getCost();
+        RCLCPP_INFO(rclcpp::get_logger(name_),
+                    "[PlannerAction] FOUND_PLAN: start=(%.3f, %.3f) goal=(%.3f, %.3f) "
+                    "tolerance=%.3fm poses=%zu cost=%.3f",
+                    start_pose.pose.position.x, start_pose.pose.position.y,
+                    goal.goal.pose.position.x, goal.goal.pose.position.y,
+                    tolerance, plan.size(), result->cost);
         plan_publisher_->publish(result->path);
         goal_handle->succeed(result);
 
@@ -212,9 +233,11 @@ void PlannerAction::runImpl(const GoalHandlePtr& goal_handle,
 
         // no plan found
       case PlannerExecution::NO_PLAN_FOUND:
-        RCLCPP_DEBUG_STREAM(rclcpp::get_logger(name_),
-                            "planner state: no plan found");
-        RCLCPP_ERROR_STREAM(rclcpp::get_logger(name_), execution.getMessage());
+        RCLCPP_ERROR(rclcpp::get_logger(name_),
+                     "[PlannerAction] NO_PLAN_FOUND: start=(%.3f, %.3f) goal=(%.3f, %.3f) tolerance=%.3fm | %s",
+                     start_pose.pose.position.x, start_pose.pose.position.y,
+                     goal.goal.pose.position.x, goal.goal.pose.position.y,
+                     tolerance, execution.getMessage().c_str());
         result->outcome = execution.getOutcome();
         result->message = execution.getMessage();
         goal_handle->abort(result);
@@ -222,10 +245,11 @@ void PlannerAction::runImpl(const GoalHandlePtr& goal_handle,
         break;
 
       case PlannerExecution::MAX_RETRIES:
-        RCLCPP_DEBUG_STREAM(
-            rclcpp::get_logger(name_),
-            "Global planner reached the maximum number of retries");
-        RCLCPP_ERROR_STREAM(rclcpp::get_logger(name_), execution.getMessage());
+        RCLCPP_ERROR(rclcpp::get_logger(name_),
+                     "[PlannerAction] MAX_RETRIES: start=(%.3f, %.3f) goal=(%.3f, %.3f) tolerance=%.3fm | %s",
+                     start_pose.pose.position.x, start_pose.pose.position.y,
+                     goal.goal.pose.position.x, goal.goal.pose.position.y,
+                     tolerance, execution.getMessage().c_str());
         result->outcome = execution.getOutcome();
         result->message = execution.getMessage();
         goal_handle->abort(result);
@@ -233,10 +257,11 @@ void PlannerAction::runImpl(const GoalHandlePtr& goal_handle,
         break;
 
       case PlannerExecution::PAT_EXCEEDED:
-        RCLCPP_DEBUG_STREAM(rclcpp::get_logger(name_),
-                            "Global planner exceeded the patience time");
-        RCLCPP_ERROR_STREAM(rclcpp::get_logger(name_),
-                            "Global planner exceeded the patience time");
+        RCLCPP_ERROR(rclcpp::get_logger(name_),
+                     "[PlannerAction] PAT_EXCEEDED: start=(%.3f, %.3f) goal=(%.3f, %.3f) tolerance=%.3fm",
+                     start_pose.pose.position.x, start_pose.pose.position.y,
+                     goal.goal.pose.position.x, goal.goal.pose.position.y,
+                     tolerance);
         result->outcome = ActionToPose::Result::PAT_EXCEEDED;
         result->message = "Global planner exceeded the patience time";
         goal_handle->abort(result);
@@ -244,12 +269,11 @@ void PlannerAction::runImpl(const GoalHandlePtr& goal_handle,
         break;
 
       case PlannerExecution::INTERNAL_ERROR:
-        RCLCPP_FATAL_STREAM(rclcpp::get_logger(name_),
-                            "Internal error: Unknown error thrown by the "
-                            "plugin!");  // TODO
-                                         // getMessage
-                                         // from
-                                         // planning
+        RCLCPP_FATAL(rclcpp::get_logger(name_),
+                     "[PlannerAction] INTERNAL_ERROR: start=(%.3f, %.3f) goal=(%.3f, %.3f) | %s",
+                     start_pose.pose.position.x, start_pose.pose.position.y,
+                     goal.goal.pose.position.x, goal.goal.pose.position.y,
+                     execution.getMessage().empty() ? "unknown error" : execution.getMessage().c_str());
         result->outcome = ActionToPose::Result::INTERNAL_ERROR;
         result->message = "Internal planner error";
         planner_active = false;

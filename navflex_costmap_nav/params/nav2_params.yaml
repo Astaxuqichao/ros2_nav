@@ -176,7 +176,10 @@ local_costmap:
       height: 10
       resolution: 0.05
       robot_radius: 0.22
-      plugins: ["rgbd_obstacle_layer", "inflation_layer"]
+      plugins: ["rgbd_obstacle_layer", "exclusion_zone", "inflation_layer"]
+      exclusion_zone:
+        plugin: "navflex_exclusion_zone::ExclusionZoneLayer"
+        enabled: true
       rgbd_obstacle_layer:
         plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
         enabled:               true
@@ -246,7 +249,10 @@ global_costmap:
       robot_radius: 0.22
       resolution: 0.05
       track_unknown_space: true
-      plugins: ["static_layer", "rgbd_obstacle_layer", "inflation_layer"]
+      plugins: ["static_layer", "rgbd_obstacle_layer", "exclusion_zone", "inflation_layer"]
+      exclusion_zone:
+        plugin: "navflex_exclusion_zone::ExclusionZoneLayer"
+        enabled: true
       rgbd_obstacle_layer:
         plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
         enabled:               true
@@ -307,6 +313,8 @@ navflex_planner_server:
   ros__parameters:
     expected_planner_frequency: 20.0
     use_sim_time: True
+    planner_patience: 10.0       # seconds per single makePlan() call; abort if exceeded
+    planner_max_retries: 10      # retry up to 10 times on quick failures
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"

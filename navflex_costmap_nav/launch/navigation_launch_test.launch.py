@@ -91,6 +91,8 @@ def launch_setup(context, *args, **kwargs):
                 {'route_frame': 'map'},
                 {'base_frame': 'base_link'},
                 {'max_iterations': 0},
+                {'min_prune_dist_from_start': 1.0},
+                {'min_prune_dist_from_goal': 1.0},
             ]))
 
     # Shared lifecycle manager

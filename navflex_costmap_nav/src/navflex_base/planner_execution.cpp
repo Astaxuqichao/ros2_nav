@@ -86,7 +86,7 @@ PlannerExecution::PlannerExecution(
     param_desc.description =
         "How long the planner will wait in seconds before giving up";
     node_handle_->declare_parameter("planner_patience",
-                                    rclcpp::ParameterValue(5.0), param_desc);
+                                    rclcpp::ParameterValue(10.0), param_desc);
   }
 
   // Declare planner_max_retries parameter
@@ -94,7 +94,7 @@ PlannerExecution::PlannerExecution(
     param_desc.description =
         "How many times to retry planning before giving up";
     node_handle_->declare_parameter("planner_max_retries",
-                                    rclcpp::ParameterValue(-1), param_desc);
+                                    rclcpp::ParameterValue(10), param_desc);
   }
 
   // ========== Load Parameter Values ==========
@@ -588,6 +588,8 @@ uint32_t PlannerExecution::makePlan(const geometry_msgs::msg::PoseStamped& start
         {
           setState(PLANNING, false);
 
+          // Reset per-attempt timer so patience tracks single makePlan() call duration
+          last_call_start_time_ = node_handle_->now();
           outcome_ = makePlan(current_start, current_goal, current_tolerance, plan, cost, message_);
           bool success = outcome_ < 10;
 
@@ -601,7 +603,10 @@ uint32_t PlannerExecution::makePlan(const geometry_msgs::msg::PoseStamped& start
           }
           else if (success)
           {
-            RCLCPP_DEBUG_STREAM(node_handle_->get_logger(), "Successfully found a plan.");
+            RCLCPP_INFO(node_handle_->get_logger(),
+                        "[PlannerExecution] Successfully found a plan (outcome=%u, cost=%.3f, poses=%zu, elapsed=%.2fs)",
+                        outcome_, cost, plan.size(),
+                        (node_handle_->now() - last_call_start_time_).seconds());
 
             std::lock_guard<std::mutex> plan_mtx_guard(plan_mtx_);
             plan_ = plan;
@@ -637,8 +642,12 @@ uint32_t PlannerExecution::makePlan(const geometry_msgs::msg::PoseStamped& start
           }
           else
           {
-            RCLCPP_DEBUG_STREAM(node_handle_->get_logger(), "Planning could not find a plan! "
-                                                            "Trying again...");
+            const double elapsed = (node_handle_->now() - last_call_start_time_).seconds();
+            RCLCPP_WARN(node_handle_->get_logger(),
+                        "[PlannerExecution] Planning attempt failed, retrying... "
+                        "(outcome=%u, retry=%d, elapsed=%.2fs/patience=%.1fs) | %s",
+                        outcome_, retries + 1, elapsed, patience_.seconds(),
+                        message_.empty() ? "no message" : message_.c_str());
           }
         }
       } // while (planning_ && ros::ok())

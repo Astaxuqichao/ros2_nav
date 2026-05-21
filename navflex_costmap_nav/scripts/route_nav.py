@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-使用 nav2_route 计算路径并通过 FollowPath 执行（交互式手动输入）。
+使用 nav2_route ComputeAndTrackRoute 规划并跟踪路径，通过 FollowPath 执行。
 
 用法:
     ros2 run navflex_costmap_nav route_nav.py
@@ -8,6 +8,9 @@
 启动后按提示输入目标点，支持连续导航：
     x y [yaw]    -- 发送新目标
     q            -- 退出
+
+ComputeAndTrackRoute 会持续跟踪机器人在路网上的进度，
+当发生重规划时自动取消 FollowPath 并用新路径重新执行。
 """
 
 import sys
@@ -21,7 +24,7 @@ from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 
 from geometry_msgs.msg import PoseStamped, Quaternion
 from nav_msgs.msg import Path
-from nav2_msgs.action import ComputeRoute, FollowPath
+from nav2_msgs.action import ComputeAndTrackRoute, FollowPath
 
 
 def yaw_to_quaternion(yaw: float) -> Quaternion:
@@ -35,10 +38,12 @@ class RouteNavClient(Node):
     def __init__(self):
         super().__init__('route_nav_client')
         self._frame = 'map'
-        self._busy = False  # 是否有任务正在执行
-        self._active_follow_handle = None
+        self._busy = False
+        self._active_route_handle = None   # ComputeAndTrackRoute handle
+        self._active_follow_handle = None  # FollowPath handle
+        self._following_path = False       # FollowPath 是否正在执行
 
-        self._route_client = ActionClient(self, ComputeRoute, 'compute_route')
+        self._route_client = ActionClient(self, ComputeAndTrackRoute, 'compute_and_track_route')
         self._follow_client = ActionClient(self, FollowPath, 'follow_path')
         _latched_qos = QoSProfile(
             depth=1,
@@ -53,14 +58,18 @@ class RouteNavClient(Node):
 
     def navigate_to(self, x: float, y: float, yaw: float = 0.0):
         """发送新目标，若有正在执行的任务先取消"""
-        if self._busy and self._active_follow_handle:
-            self.get_logger().info('取消当前执行任务...')
-            self._active_follow_handle.cancel_goal_async()
+        if self._busy:
+            self.get_logger().info('取消当前任务...')
+            if self._active_follow_handle:
+                self._active_follow_handle.cancel_goal_async()
+            if self._active_route_handle:
+                self._active_route_handle.cancel_goal_async()
 
         self._busy = True
+        self._following_path = False
         self.get_logger().info(f'目标: x={x:.3f}, y={y:.3f}, yaw={yaw:.3f}')
 
-        goal_msg = ComputeRoute.Goal()
+        goal_msg = ComputeAndTrackRoute.Goal()
         goal_msg.use_poses = True
         goal_msg.use_start = False
         goal_msg.goal = PoseStamped()
@@ -70,30 +79,51 @@ class RouteNavClient(Node):
         goal_msg.goal.pose.position.y = y
         goal_msg.goal.pose.orientation = yaw_to_quaternion(yaw)
 
-        future = self._route_client.send_goal_async(goal_msg)
+        future = self._route_client.send_goal_async(
+            goal_msg,
+            feedback_callback=self._on_route_feedback)
         future.add_done_callback(self._on_route_accepted)
 
     def _on_route_accepted(self, future):
         handle = future.result()
         if not handle.accepted:
-            self.get_logger().error('ComputeRoute goal 被拒绝！')
+            self.get_logger().error('ComputeAndTrackRoute goal 被拒绝！')
             self._busy = False
             return
-        self.get_logger().info('路径规划中...')
+        self._active_route_handle = handle
+        self.get_logger().info('路网跟踪已启动，等待路径...')
         handle.get_result_async().add_done_callback(self._on_route_result)
 
-    def _on_route_result(self, future):
-        result = future.result().result
-        path = result.path
+    def _on_route_feedback(self, feedback_msg):
+        fb = feedback_msg.feedback
+        path = fb.path
+
         if not path.poses:
-            self.get_logger().error('路径为空，规划失败！')
-            self._busy = False
             return
-        self.get_logger().info(f'规划成功：{len(path.poses)} 个路径点，开始执行...')
-        self._path_pub.publish(path)
-        self._send_follow_path(path)
+
+        # 首次收到路径，或路由重规划时，重启 FollowPath
+        if not self._following_path or fb.rerouted:
+            if fb.rerouted:
+                self.get_logger().info(
+                    f'路由重规划！新路径 {len(path.poses)} 个点，重启 FollowPath...')
+                if self._active_follow_handle:
+                    self._active_follow_handle.cancel_goal_async()
+                    self._active_follow_handle = None
+            else:
+                self.get_logger().info(
+                    f'收到初始路径：{len(path.poses)} 个点，开始执行...')
+
+            self._path_pub.publish(path)
+            self._send_follow_path(path)
+
+        # 更新当前节点信息日志
+        if fb.next_node_id or fb.last_node_id:
+            self.get_logger().debug(
+                f'路网进度: last_node={fb.last_node_id} → next_node={fb.next_node_id} '
+                f'edge={fb.current_edge_id}')
 
     def _send_follow_path(self, path):
+        self._following_path = True
         follow_goal = FollowPath.Goal()
         follow_goal.path = path
         follow_goal.controller_id = 'FollowPath'
@@ -106,23 +136,36 @@ class RouteNavClient(Node):
         handle = future.result()
         if not handle.accepted:
             self.get_logger().error('FollowPath goal 被拒绝！')
-            self._busy = False
+            self._following_path = False
             return
         self._active_follow_handle = handle
         self.get_logger().info('机器人开始运动...')
         handle.get_result_async().add_done_callback(self._on_follow_result)
 
     def _on_follow_result(self, future):
-        result = future.result().result
-        self._busy = False
         self._active_follow_handle = None
+        self._following_path = False
+        result = future.result().result
         if hasattr(result, 'dist_to_goal'):
             self.get_logger().info(
-                f'执行完毕 | outcome={result.outcome} '
+                f'FollowPath 完成 | outcome={result.outcome} '
                 f'dist={result.dist_to_goal:.3f}m '
                 f'angle={result.angle_to_goal:.3f}rad')
+
+    def _on_route_result(self, future):
+        self._busy = False
+        self._active_route_handle = None
+        status = future.result().status
+        # 取消 FollowPath（若还在运行）
+        if self._active_follow_handle:
+            self._active_follow_handle.cancel_goal_async()
+            self._active_follow_handle = None
+        self._following_path = False
+        from action_msgs.msg import GoalStatus
+        if status == GoalStatus.STATUS_SUCCEEDED:
+            self.get_logger().info('路网导航完成！')
         else:
-            self.get_logger().info('执行完毕')
+            self.get_logger().warn(f'路网导航结束，status={status}')
         print('\n输入目标点 (x y [yaw]) 或 q 退出: ', end='', flush=True)
 
 

@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>navflex_exclusion_zone</name>
+  <version>0.1.0</version>
+  <description>
+    电子禁区 nav2_costmap_2d 插件。
+    通过 ROS2 话题动态接收多边形禁区坐标，将禁区内所有格标记为
+    LETHAL_OBSTACLE，兼容滚动地图和非滚动地图。
+  </description>
+  <maintainer email="xuqichao66@outlook.com">root</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>nav2_util</depend>
+  <depend>nav2_costmap_2d</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>pluginlib</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <nav2_costmap_2d plugin="${prefix}/costmap_plugins.xml" />
+  </export>
+</package>

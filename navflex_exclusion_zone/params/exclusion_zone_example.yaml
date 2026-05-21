@@ -1,0 +1,65 @@
+# ============================================================
+# 电子禁区层配置示例
+# 将下方 exclusion_zone 段复制到你的 costmap yaml 的 plugins 列表中
+# ============================================================
+
+# ---------- 全局代价地图示例 ----------
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      # ... 其他参数省略 ...
+      plugins:
+        - name: static_layer
+          type: "nav2_costmap_2d::StaticLayer"
+        - name: obstacle_layer
+          type: "nav2_costmap_2d::ObstacleLayer"
+        - name: exclusion_zone        # 层名可自定义，需与下方参数键名一致
+          type: "navflex_exclusion_zone::ExclusionZoneLayer"
+        - name: inflation_layer
+          type: "nav2_costmap_2d::InflationLayer"
+
+      exclusion_zone:
+        enabled: true                 # 是否启用（默认 true）
+
+# ---------- 局部代价地图示例（滚动地图）----------
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      rolling_window: true
+      # ... 其他参数省略 ...
+      plugins:
+        - name: obstacle_layer
+          type: "nav2_costmap_2d::ObstacleLayer"
+        - name: exclusion_zone
+          type: "navflex_exclusion_zone::ExclusionZoneLayer"
+        - name: inflation_layer
+          type: "nav2_costmap_2d::InflationLayer"
+
+      exclusion_zone:
+        enabled: true
+
+# ============================================================
+# 运行时操作方法
+# ============================================================
+#
+# 【追加一个矩形禁区（四边形多边形）】
+#   ros2 topic pub --once \
+#     /global_costmap/exclusion_zone/add_exclusion_zone \
+#     geometry_msgs/msg/PolygonStamped \
+#     '{
+#       header: {frame_id: map},
+#       polygon: {
+#         points: [
+#           {x: 1.0, y: 1.0, z: 0.0},
+#           {x: 3.0, y: 1.0, z: 0.0},
+#           {x: 3.0, y: 3.0, z: 0.0},
+#           {x: 1.0, y: 3.0, z: 0.0}
+#         ]
+#       }
+#     }'
+#
+# 【清除全部禁区】
+#   ros2 service call \
+#     /global_costmap/exclusion_zone/clear_exclusion_zones \
+#     std_srvs/srv/Empty
+# ============================================================

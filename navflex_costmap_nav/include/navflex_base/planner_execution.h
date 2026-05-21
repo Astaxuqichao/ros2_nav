@@ -105,6 +105,11 @@ namespace navflex_costmap_nav
     double getFrequency() const { return frequency_; };
 
     /**
+     * @brief Gets the configured patience duration in seconds
+     */
+    double getPatience() const { return patience_.seconds(); };
+
+    /**
      * @brief Gets computed costs
      * @return The costs of the computed path
      */

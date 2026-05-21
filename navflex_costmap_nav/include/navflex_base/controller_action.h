@@ -67,9 +67,11 @@ class ControllerAction
                        uint32_t outcome,
                        const std::string& message);
 
-  std::mutex goal_mtx_;  ///< Protects robot_pose_/goal_pose_ during plan updates
+  std::mutex goal_mtx_;  ///< Protects robot_pose_/goal_pose_/pending_goal_handle_
   geometry_msgs::msg::PoseStamped robot_pose_;  ///< Latest robot pose
   geometry_msgs::msg::PoseStamped goal_pose_;   ///< Goal pose (last path pose)
+  /// Set by start() on in-place preempt; consumed by runImpl() each loop tick.
+  GoalHandlePtr pending_goal_handle_;
 };
 
 }  // namespace navflex_costmap_nav
