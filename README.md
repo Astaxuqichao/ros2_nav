@@ -16,6 +16,60 @@
 | `simulation_lidar` | 基于 `OccupancyGrid` 地图的 2D 仿真激光雷达，发布 `LaserScan` 与 `PointCloud2`，支持噪声、射线投射、未知区域障碍 |
 | `rcl_logging_spdlog_rotating` | ROS 2 自定义日志后端，使用 spdlog 异步滚动写入替换默认日志实现 |
 
+## navflex_costmap_nav 核心设计
+
+`navflex_costmap_nav` 是 Navflex 导航栈的核心运行时。它不是简单地分别启动 Nav2 的 `planner_server`、`controller_server`、`behavior_server`，而是在一个 lifecycle 节点 `CostmapNavNode` 内统一组织 costmap、规划、控制和行为执行。
+
+### 单 lifecycle 入口
+
+`CostmapNavNode` 继承 `nav2_util::LifecycleNode`，作为整个导航服务端的生命周期入口：
+
+- `configure`：创建 global/local costmap，加载 Planner、Controller、Behavior 插件，创建 action server
+- `activate`：激活 costmap、插件和 action server publisher
+- `deactivate`：取消正在执行的 action，停止发布控制输出
+- `cleanup`：释放 action server、executor、插件和 costmap 资源
+
+在 bringup 中，`lifecycle_manager_navflex` 只需要管理 `navflex_costmap_nav` 与 `bt_navigator`，并保证 `navflex_costmap_nav` 先于 `bt_navigator` 激活。
+
+### 三类 action server
+
+`navflex_costmap_nav` 对外提供三个核心 action server，供 BT 节点或脚本调用：
+
+| Action server | 动作类型 | 作用 |
+|---------------|----------|------|
+| `/compute_path_to_pose` | `nav2_msgs/action/ComputePathToPose` | 调用 `nav2_core::GlobalPlanner` 生成全局路径 |
+| `/follow_path` | `nav2_msgs/action/FollowPath` | 调用 `nav2_core::Controller` 跟踪路径并发布速度 |
+| `/behavior_action` | `nav2_msgs/action/DummyBehavior` | 调用 `nav2_core::Behavior` 执行恢复/行为命令 |
+
+对应实现分为 `PlannerCostmapServer`、`ControllerCostmapServer`、`BehaviorCostmapServer`，底层统一复用 `NavflexActionBase` 与各自的 `Execution` 类。
+
+### 共享 costmap 与插件体系
+
+`CostmapNavNode` 内部创建并维护：
+
+- `global_costmap`：供全局规划和全局路径检查使用
+- `local_costmap`：供控制器和局部恢复行为使用
+- Planner 插件：如 `nav2_navfn_planner/NavfnPlanner`
+- Controller 插件：如 `nav2_mppi_controller::MPPIController`
+- Behavior 插件：如 `navflex_cmdbehavior/CmdBehavior`
+
+参数、地图和 RViz 配置集中放在 `navflex_bringup`，`navflex_costmap_nav` 专注于运行时导航服务端本身。
+
+### 独立 action executor
+
+每个 server 的 action execute 回调使用独立 callback group 和独立 executor 线程处理，避免长时间运行的规划、控制或行为执行阻塞 goal/cancel 服务响应。这一点对 FollowPath 和恢复行为尤其重要，否则 action client 可能出现 goal response timeout 或 cancel 不及时。
+
+### FollowPath 原地路径更新
+
+`ControllerAction` 支持同 controller、同 goal checker 的新 FollowPath goal 做原地 plan update：
+
+- BT 中 `RateController` 周期重规划，更新 blackboard 的 `{path}`
+- `NavflexExePathAction` 运行中检测 `{path}` 变化并重新发送 FollowPath goal
+- `ControllerAction` 判断 controller 与 goal checker 未变化时，不重启控制线程，而是调用 `ControllerExecution::setNewPlan()`
+- `ControllerExecution` 在控制循环中接收新 plan，并让控制器继续沿最新路径运行
+
+这个机制用于支持导航过程中动态重规划、避障路径更新和新目标路径切换。
+
 ## 依赖
 
 - ROS 2 Humble
@@ -135,3 +189,11 @@ ros2 launch navflex_bringup navflex_bringup_launch.py use_sim_time:=true
 
 ## TODO
 1. 根据实际场景继续完善全局重规划、恢复策略和路网导航行为树
+
+## License
+
+本仓库采用 `Apache-2.0` 许可证。
+
+- 允许使用、修改、分发和商业使用
+- 需保留许可证和版权声明
+- 完整条款见仓库根目录 [LICENSE](./LICENSE)
