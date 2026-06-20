@@ -130,17 +130,8 @@ ros2 launch navflex_bringup sim_local_launch.py
 ros2 launch navflex_bringup navflex_bringup_launch.py use_sim_time:=true
 ```
 
-### 第三步：启动导航测试客户端
 
-监听 `/goal_pose` 话题，自动调用规划与跟踪 action server：
-
-```bash
-ros2 run navflex_costmap_nav nav_test.py
-```
-
-在 RViz 中使用 **2D Goal Pose** 工具发布目标点，客户端将依次调用 `ComputePathToPose` 和 `FollowPath`。
-
-也可以直接使用 `bt_navigator` 的 NavigateToPose action，由 `navflex_bt_navigator` 的行为树完成规划、控制和恢复逻辑。
+在 RViz 中使用 **2D Goal Pose** 工具发布目标点，默认将直接使用 `bt_navigator` 的 NavigateToPose action，由 `navflex_bt_navigator` 的行为树完成规划、控制和恢复逻辑。
 
 ## TODO
 1. 根据实际场景继续完善全局重规划、恢复策略和路网导航行为树
