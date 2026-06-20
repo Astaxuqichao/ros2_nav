@@ -1,0 +1,497 @@
+<?xml version="1.0"?>
+<root main_tree_to_execute="MainTree">
+    <!-- ////////// -->
+    <BehaviorTree ID="MainTree">
+        <Control ID="RecoveryNode" name="NavigateRecovery" number_of_retries="6">
+            <Control ID="PipelineSequence" name="NavigateWithReplanning">
+                <Decorator ID="RateController" hz="1.0">
+                    <Control ID="RecoveryNode" name="ComputePathToPose" number_of_retries="1">
+                        <Action ID="NavflexGetPathAction" goal="{goal}" message="{planner_message}" outcome="{planner_outcome}" path="{path}" planner_id="GridBased" server_name="compute_path_to_pose" server_timeout="10.0" tolerance="0.5" use_start="false"/>
+                        <Action ID="ClearEntireCostmap" name="ClearGlobalCostmap-Context" server_timeout="10.0" service_name="global_costmap/clear_entirely_global_costmap"/>
+                    </Control>
+                </Decorator>
+                <Control ID="RecoveryNode" name="FollowPath" number_of_retries="1">
+                    <Action ID="NavflexExePathAction" angle_to_goal="{controller_angle_to_goal}" controller_id="FollowPath" dist_to_goal="{controller_dist_to_goal}" feedback_distance_to_goal="{controller_feedback_distance_to_goal}" feedback_message="{controller_feedback_message}" feedback_outcome="{controller_feedback_outcome}" feedback_speed="{controller_feedback_speed}" final_pose="{controller_final_pose}" goal_checker_id="general_goal_checker" message="{controller_message}" outcome="{controller_outcome}" path="{path}" server_name="follow_path" server_timeout="10.0"/>
+                    <Action ID="ClearEntireCostmap" name="ClearLocalCostmap-Context" server_timeout="10.0" service_name="local_costmap/clear_entirely_local_costmap"/>
+                </Control>
+            </Control>
+            <ReactiveFallback name="RecoveryFallback">
+                <Condition ID="GoalUpdated"/>
+                <Control ID="RoundRobin" name="RecoveryActions">
+                    <Sequence name="ClearingActions">
+                        <Action ID="ClearEntireCostmap" name="ClearLocalCostmap-Subtree" server_timeout="10.0" service_name="local_costmap/clear_entirely_local_costmap"/>
+                        <Action ID="ClearEntireCostmap" name="ClearGlobalCostmap-Subtree" server_timeout="10.0" service_name="global_costmap/clear_entirely_global_costmap"/>
+                    </Sequence>
+                    <Action ID="NavflexRecoveryAction" behavior="cmd_behavior" command="rotate 1.57" message="{recovery_rotate_message}" outcome="{recovery_rotate_outcome}" server_name="behavior_action" server_timeout="10.0" used_plugin="{recovery_rotate_used_plugin}"/>
+                    <Action ID="NavflexRecoveryAction" behavior="cmd_behavior" command="wait 5" message="{recovery_wait_message}" outcome="{recovery_wait_outcome}" server_name="behavior_action" server_timeout="10.0" used_plugin="{recovery_wait_used_plugin}"/>
+                    <Action ID="NavflexRecoveryAction" behavior="cmd_behavior" command="linear -0.3" message="{recovery_linear_message}" outcome="{recovery_linear_outcome}" server_name="behavior_action" server_timeout="10.0" used_plugin="{recovery_linear_used_plugin}"/>
+                </Control>
+            </ReactiveFallback>
+        </Control>
+    </BehaviorTree>
+    <!-- ////////// -->
+    <TreeNodesModel>
+        <Action ID="AssistedTeleop">
+            <input_port name="is_recovery">If true recovery count will be incremented</input_port>
+            <input_port name="server_name">Service name</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+            <input_port name="time_allowance">Allowed time for spinning</input_port>
+        </Action>
+        <Action ID="BackUp">
+            <input_port name="backup_dist">Distance to backup</input_port>
+            <input_port name="backup_speed">Speed at which to backup</input_port>
+            <input_port name="server_name">Server name</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+            <input_port name="time_allowance">Allowed time for reversing</input_port>
+        </Action>
+        <Action ID="CancelAssistedTeleop">
+            <input_port name="server_name">Server name to cancel the assisted teleop behavior</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+        </Action>
+        <Action ID="CancelBackUp">
+            <input_port name="server_name">Server name to cancel the backup behavior</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+        </Action>
+        <Action ID="CancelControl">
+            <input_port name="server_name">Server name to cancel the controller server</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+        </Action>
+        <Action ID="CancelDriveOnHeading">
+            <input_port name="server_name">Service name to cancel the drive on heading behavior</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+        </Action>
+        <Action ID="CancelSpin">
+            <input_port name="server_name">Server name to cancel the spin behavior</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+        </Action>
+        <Action ID="CancelWait">
+            <input_port name="server_name">Server name to cancel the wait behavior</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+        </Action>
+        <Action ID="ClearCostmapAroundRobot">
+            <input_port name="reset_distance">Distance from the robot under which obstacles are cleared</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+            <input_port name="service_name">Service name</input_port>
+        </Action>
+        <Action ID="ClearCostmapExceptRegion">
+            <input_port name="reset_distance">Distance from the robot above which obstacles are cleared</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+            <input_port name="service_name">Service name</input_port>
+        </Action>
+        <Action ID="ClearEntireCostmap">
+            <input_port name="server_timeout">Server timeout</input_port>
+            <input_port name="service_name">Service name</input_port>
+        </Action>
+        <Action ID="ComputePathThroughPoses">
+            <input_port name="goals">Destinations to plan through</input_port>
+            <output_port name="path">Path created by ComputePathToPose node</output_port>
+            <input_port name="planner_id">Mapped name to the planner plugin type to use</input_port>
+            <input_port name="server_name">Server name</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+            <input_port name="start">Start pose of the path if overriding current robot pose</input_port>
+        </Action>
+        <Action ID="ComputePathToPose">
+            <input_port name="goal">Destination to plan to</input_port>
+            <output_port name="path">Path created by ComputePathToPose node</output_port>
+            <input_port name="planner_id">Mapped name to the planner plugin type to use</input_port>
+            <input_port name="server_name">Server name</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+            <input_port name="start">Start pose of the path if overriding current robot pose</input_port>
+        </Action>
+        <Action ID="ControllerSelector">
+            <input_port name="default_controller">Default controller of the controller selector</input_port>
+            <output_port name="selected_controller">Name of the selected controller received from the topic subcription</output_port>
+            <input_port name="topic_name">Name of the topic to receive controller selection commands</input_port>
+        </Action>
+        <Decorator ID="DistanceController">
+            <input_port name="distance">Distance</input_port>
+            <input_port name="global_frame">Reference frame</input_port>
+            <input_port name="robot_base_frame">Robot base frame</input_port>
+        </Decorator>
+        <Condition ID="DistanceTraveled">
+            <input_port name="distance">Distance to check if passed</input_port>
+            <input_port name="global_frame">reference frame to check in</input_port>
+            <input_port name="robot_base_frame">Robot frame to check relative to global_frame</input_port>
+        </Condition>
+        <Action ID="DriveOnHeading">
+            <input_port name="dist_to_travel">Distance to travel</input_port>
+            <input_port name="server_name">Server name</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+            <input_port name="speed">Speed at which to travel</input_port>
+            <input_port name="time_allowance">Allowed time for reversing</input_port>
+        </Action>
+        <Action ID="FollowPath">
+            <input_port default="FollowPath" name="controller_id"/>
+            <input_port name="goal_checker_id">Goal checker</input_port>
+            <input_port name="path">Path to follow</input_port>
+            <input_port name="server_name">Server name</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+        </Action>
+        <Condition ID="GlobalUpdatedGoal"/>
+        <Action ID="GoalCheckerSelector">
+            <input_port name="default_goal_checker">Default goal checker of the controller selector</input_port>
+            <output_port name="selected_goal_checker">Name of the selected goal checker received from the topic subcription</output_port>
+            <input_port name="topic_name">Name of the topic to receive goal checker selection commands</input_port>
+        </Action>
+        <Condition ID="GoalReached">
+            <input_port name="global_frame">Reference frame</input_port>
+            <input_port name="goal">Destination</input_port>
+            <input_port name="robot_base_frame">Robot base frame</input_port>
+        </Condition>
+        <Condition ID="GoalUpdated"/>
+        <Decorator ID="GoalUpdatedController"/>
+        <Decorator ID="GoalUpdater">
+            <input_port name="input_goal">Original goal in</input_port>
+            <output_port name="output_goal">Output goal set by subscription</output_port>
+        </Decorator>
+        <Condition ID="InitialPoseReceived"/>
+        <Condition ID="IsBatteryCharging">
+            <input_port name="battery_topic">Topic for battery info</input_port>
+        </Condition>
+        <Condition ID="IsBatteryLow">
+            <input_port name="battery_topic">Topic for battery info</input_port>
+            <input_port name="is_voltage">Bool if check based on voltage or total %</input_port>
+            <input_port name="min_battery">Min battery % or voltage before triggering</input_port>
+        </Condition>
+        <Condition ID="IsPathValid">
+            <input_port name="path"> Path to validate </input_port>
+            <input_port name="server_timeout"> Server timeout </input_port>
+        </Condition>
+        <Condition ID="IsStuck"/>
+        <Action ID="NavflexCancelExePath">
+            <input_port default="follow_path" name="server_name" type="string">
+        Action server name to cancel
+      </input_port>
+            <input_port default="10.0" name="server_timeout" type="double">
+        Timeout waiting for the action server (seconds)
+      </input_port>
+        </Action>
+        <Action ID="NavflexCancelGetPath">
+            <input_port default="compute_path_to_pose" name="server_name" type="string">
+        Action server name to cancel
+      </input_port>
+            <input_port default="10.0" name="server_timeout" type="double">
+        Timeout waiting for the action server (seconds)
+      </input_port>
+        </Action>
+        <Action ID="NavflexCancelRecovery">
+            <input_port default="behavior_action" name="server_name" type="string">
+        Action server name to cancel
+      </input_port>
+            <input_port default="10.0" name="server_timeout" type="double">
+        Timeout waiting for the action server (seconds)
+      </input_port>
+        </Action>
+        <Action ID="NavflexCheckPathService">
+            <output_port name="cost" type="uint32">
+        Accumulated path cost
+      </output_port>
+            <input_port default="2" name="costmap" type="uint8">
+        Costmap id: 1 local, 2 global
+      </input_port>
+            <input_port default="0.0" name="inscrib_cost_mult" type="float">
+        Inscribed cost multiplier
+      </input_port>
+            <output_port name="last_checked" type="uint32">
+        Last checked pose index
+      </output_port>
+            <input_port default="0.0" name="lethal_cost_mult" type="float">
+        Lethal cost multiplier
+      </input_port>
+            <input_port name="path" type="nav_msgs/Path">
+        Path to check
+      </input_port>
+            <input_port default="false" name="path_cells_only" type="bool">
+        Check only path cells and ignore footprint
+      </input_port>
+            <input_port default="0" name="return_on" type="uint8">
+        Stop checking if state &gt;= return_on
+      </input_port>
+            <input_port default="0.0" name="safety_dist" type="float">
+        Safety padding around robot footprint
+      </input_port>
+            <input_port default="1.0" name="server_timeout" type="double">
+        Server timeout (seconds)
+      </input_port>
+            <input_port default="check_path_cost" name="service_name" type="string">
+        Service name
+      </input_port>
+            <input_port default="0" name="skip_poses" type="uint8">
+        Skip N poses between checks
+      </input_port>
+            <output_port name="state" type="uint8">
+        Worst path state: FREE/INSCRIBED/LETHAL/UNKNOWN/OUTSIDE
+      </output_port>
+            <input_port default="0.0" name="unknown_cost_mult" type="float">
+        Unknown cost multiplier
+      </input_port>
+        </Action>
+        <Action ID="NavflexCheckPointService">
+            <output_port name="cost" type="uint32">
+        Cell cost at point
+      </output_port>
+            <input_port default="2" name="costmap" type="uint8">
+        Costmap id: 1 local, 2 global
+      </input_port>
+            <input_port name="point" type="geometry_msgs/PointStamped">
+        Point to check
+      </input_port>
+            <input_port default="1.0" name="server_timeout" type="double">
+        Server timeout (seconds)
+      </input_port>
+            <input_port default="check_point_cost" name="service_name" type="string">
+        Service name
+      </input_port>
+            <output_port name="state" type="uint8">
+        Point state: FREE/INSCRIBED/LETHAL/UNKNOWN/OUTSIDE
+      </output_port>
+        </Action>
+        <Action ID="NavflexCheckPoseService">
+            <output_port name="cost" type="uint32">
+        Accumulated pose cost
+      </output_port>
+            <input_port default="2" name="costmap" type="uint8">
+        Costmap id: 1 local, 2 global
+      </input_port>
+            <input_port default="false" name="current_pose" type="bool">
+        Use current robot pose
+      </input_port>
+            <input_port default="0.0" name="inscrib_cost_mult" type="float">
+        Inscribed cost multiplier
+      </input_port>
+            <input_port default="0.0" name="lethal_cost_mult" type="float">
+        Lethal cost multiplier
+      </input_port>
+            <input_port name="pose" type="geometry_msgs/PoseStamped">
+        Pose to check
+      </input_port>
+            <input_port default="0.0" name="safety_dist" type="float">
+        Safety padding around robot footprint
+      </input_port>
+            <input_port default="1.0" name="server_timeout" type="double">
+        Server timeout (seconds)
+      </input_port>
+            <input_port default="check_pose_cost" name="service_name" type="string">
+        Service name
+      </input_port>
+            <output_port name="state" type="uint8">
+        Pose state: FREE/INSCRIBED/LETHAL/UNKNOWN/OUTSIDE
+      </output_port>
+            <input_port default="0.0" name="unknown_cost_mult" type="float">
+        Unknown cost multiplier
+      </input_port>
+        </Action>
+        <Action ID="NavflexExePathAction">
+            <output_port name="angle_to_goal" type="float">
+        Angle to goal at completion
+      </output_port>
+            <input_port default="FollowPath" name="controller_id" type="string">
+        Controller plugin ID (must match a key in controller_plugins)
+      </input_port>
+            <output_port name="dist_to_goal" type="float">
+        Distance to goal at completion
+      </output_port>
+            <output_port name="feedback_distance_to_goal" type="float">
+        Live distance-to-goal from controller feedback (metres)
+      </output_port>
+            <output_port name="feedback_message" type="string">
+        Live message from latest controller cycle
+      </output_port>
+            <output_port name="feedback_outcome" type="uint32_t">
+        Live outcome code from latest controller cycle (SUCCESS=0 / NO_VALID_CMD=102 / ...)
+      </output_port>
+            <output_port name="feedback_speed" type="float">
+        Live robot speed from controller feedback (m/s)
+      </output_port>
+            <output_port name="final_pose" type="geometry_msgs/PoseStamped">
+        Final robot pose reported by the controller
+      </output_port>
+            <input_port default="general_goal_checker" name="goal_checker_id" type="string">
+        Goal checker plugin ID
+      </input_port>
+            <output_port name="message" type="string">
+        Human-readable result description
+      </output_port>
+            <output_port name="outcome" type="uint32">
+        Result code: 0=SUCCESS 100=FAILURE 101=CANCELED 102=NO_VALID_CMD
+        103=PAT_EXCEEDED 104=COLLISION 105=OSCILLATION 106=ROBOT_STUCK
+        107=MISSED_GOAL 108=MISSED_PATH 109=BLOCKED_GOAL 110=BLOCKED_PATH
+        111=INVALID_PATH 112=TF_ERROR 113=NOT_INITIALIZED 114=INVALID_PLUGIN
+        115=INTERNAL_ERROR 116=OUT_OF_MAP 117=MAP_ERROR 118=STOPPED
+      </output_port>
+            <input_port name="path" type="nav_msgs/Path">
+        Global path to follow
+      </input_port>
+            <input_port default="follow_path" name="server_name" type="string">
+        Action server name
+      </input_port>
+            <input_port default="10.0" name="server_timeout" type="double">
+        Timeout waiting for the action server (seconds)
+      </input_port>
+        </Action>
+        <Action ID="NavflexGetPathAction">
+            <input_port name="goal" type="geometry_msgs/PoseStamped">
+        Destination pose to plan to
+      </input_port>
+            <output_port name="message" type="string">
+        Human-readable result description
+      </output_port>
+            <output_port name="outcome" type="uint8">
+        Result code: 0=SUCCESS 50=FAILURE 51=CANCELED 52=INVALID_START
+        53=INVALID_GOAL 54=BLOCKED_START 55=BLOCKED_GOAL 56=NO_PATH_FOUND
+        57=PAT_EXCEEDED 58=EMPTY_PATH 59=TF_ERROR 60=NOT_INITIALIZED
+      </output_port>
+            <output_port name="path" type="nav_msgs/Path">
+        Computed global path
+      </output_port>
+            <input_port default="GridBased" name="planner_id" type="string">
+        Planner plugin ID (must match a key in planner_plugins)
+      </input_port>
+            <input_port default="compute_path_to_pose" name="server_name" type="string">
+        Action server name
+      </input_port>
+            <input_port default="10.0" name="server_timeout" type="double">
+        Timeout waiting for the action server (seconds)
+      </input_port>
+            <input_port name="start" type="geometry_msgs/PoseStamped">
+        Override start pose (only used when use_start=true)
+      </input_port>
+            <input_port default="0.5" name="tolerance" type="double">
+        Goal tolerance in metres
+      </input_port>
+            <input_port default="false" name="use_start" type="bool">
+        If true, use the start port instead of current robot pose
+      </input_port>
+        </Action>
+        <Action ID="NavflexRecoveryAction">
+            <input_port default="spin" name="behavior" type="string">
+        Name of the recovery behavior plugin to execute
+      </input_port>
+            <input_port name="command" type="string">
+        Free-form command string forwarded to the behavior plugin
+      </input_port>
+            <output_port name="message" type="string">
+        Human-readable result description
+      </output_port>
+            <output_port name="outcome" type="uint32">
+        Result code: 0=SUCCESS 150=FAILURE 151=CANCELED 152=PAT_EXCEEDED
+        153=TF_ERROR 154=NOT_INITIALIZED 155=INVALID_PLUGIN
+        156=INTERNAL_ERROR 157=STOPPED 158=IMPASSABLE
+      </output_port>
+            <input_port default="behavior_action" name="server_name" type="string">
+        Action server name
+      </input_port>
+            <input_port default="10.0" name="server_timeout" type="double">
+        Timeout waiting for the action server (seconds)
+      </input_port>
+            <output_port name="used_plugin" type="string">
+        Name of the behavior plugin that was actually used
+      </output_port>
+        </Action>
+        <Action ID="NavigateThroughPoses">
+            <input_port name="behavior_tree">Behavior tree to run</input_port>
+            <input_port name="goals">Goals</input_port>
+            <input_port name="server_name">Server name</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+        </Action>
+        <Action ID="NavigateToPose">
+            <input_port name="behavior_tree">Behavior tree to run</input_port>
+            <input_port name="goal">Goal</input_port>
+            <input_port name="server_name">Server name</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+        </Action>
+        <Condition ID="PathExpiringTimer">
+            <input_port name="path">Check if path has been updated to enable timer reset</input_port>
+            <input_port name="seconds">Time to check if expired</input_port>
+        </Condition>
+        <Decorator ID="PathLongerOnApproach">
+            <input_port name="length_factor">Length multiplication factor to check if the path is significantly longer </input_port>
+            <input_port name="path">Planned Path</input_port>
+            <input_port name="prox_len">Proximity length (m) for the path to be longer on approach</input_port>
+        </Decorator>
+        <Control ID="PipelineSequence"/>
+        <Action ID="PlannerSelector">
+            <input_port name="default_planner">Default planner of the planner selector</input_port>
+            <output_port name="selected_planner">Name of the selected planner received from the topic subcription</output_port>
+            <input_port name="topic_name">Name of the topic to receive planner selection commands</input_port>
+        </Action>
+        <Action ID="ProgressCheckerSelector">
+            <input_port name="default_progress_checker">Default progress checker of the controller selector</input_port>
+            <output_port name="selected_progress_checker">Name of the selected progress checker received from the topic subcription</output_port>
+            <input_port name="topic_name">Name of the topic to receive progress checker selection commands</input_port>
+        </Action>
+        <Decorator ID="RateController">
+            <input_port name="hz">Rate</input_port>
+        </Decorator>
+        <Control ID="RecoveryNode">
+            <input_port name="number_of_retries">Number of retries</input_port>
+        </Control>
+        <Action ID="ReinitializeGlobalLocalization">
+            <input_port name="server_timeout">Server timeout</input_port>
+            <input_port name="service_name">Service name</input_port>
+        </Action>
+        <Action ID="RemovePassedGoals">
+            <input_port name="global_frame">Global frame</input_port>
+            <input_port name="input_goals">Input goals to remove if passed</input_port>
+            <output_port name="output_goals">Set of goals after removing any passed</output_port>
+            <input_port name="radius">Radius tolerance on a goal to consider it passed</input_port>
+            <input_port name="robot_base_frame">Robot base frame</input_port>
+        </Action>
+        <Control ID="RoundRobin"/>
+        <Decorator ID="SingleTrigger"/>
+        <Action ID="SmoothPath">
+            <input_port name="check_for_collisions">Bool if collision check should be performed</input_port>
+            <input_port name="max_smoothing_duration">Maximum smoothing duration</input_port>
+            <output_port name="smoothed_path">Smoothed path</output_port>
+            <input_port default="SmoothPath" name="smoother_id"/>
+            <output_port name="smoothing_duration">Smoothing duration</output_port>
+            <input_port name="unsmoothed_path">Path to be smoothed</input_port>
+            <output_port name="was_completed">True if smoothing was not interrupted by time limit</output_port>
+        </Action>
+        <Action ID="SmootherSelector">
+            <input_port name="default_smoother">Default smoother of the smoother selector</input_port>
+            <output_port name="selected_smoother">Name of the selected smoother received from the topic subcription</output_port>
+            <input_port name="topic_name">Name of the topic to receive smoother selection commands</input_port>
+        </Action>
+        <Decorator ID="SpeedController">
+            <input_port name="max_rate">Maximum rate</input_port>
+            <input_port name="max_speed">Maximum speed</input_port>
+            <input_port name="min_rate">Minimum rate</input_port>
+            <input_port name="min_speed">Minimum speed</input_port>
+        </Decorator>
+        <Action ID="Spin">
+            <input_port name="server_name">Server name</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+            <input_port name="spin_dist">Spin distance</input_port>
+            <input_port name="time_allowance">Allowed time for spinning</input_port>
+        </Action>
+        <Condition ID="TimeExpired">
+            <input_port name="seconds">Time to check if expired</input_port>
+        </Condition>
+        <Condition ID="TransformAvailable">
+            <input_port name="child">Child frame for transform</input_port>
+            <input_port name="parent">Parent frame for transform</input_port>
+        </Condition>
+        <Action ID="TruncatePath">
+            <input_port name="distance">Distance before goal to truncate</input_port>
+            <input_port name="input_path">Path to truncate</input_port>
+            <output_port name="output_path">Truncated path to utilize</output_port>
+        </Action>
+        <Action ID="TruncatePathLocal">
+            <input_port name="angular_distance_weight">Weight of angular distance relative to positional distance when finding which path pose is closest to robot. Not applicable on paths without orientations assigned</input_port>
+            <input_port name="distance_backward">Distance in backward direction</input_port>
+            <input_port name="distance_forward">Distance in forward direction</input_port>
+            <input_port name="max_robot_pose_search_dist">Maximum forward integrated distance along the path (starting from the last detected pose) to bound the search for the closest pose to the robot. When set to infinity (default), whole path is searched every time</input_port>
+            <output_port name="output_path">Truncated path to utilize</output_port>
+            <input_port name="pose">Manually specified pose to be used if overriding current robot pose</input_port>
+            <input_port name="robot_frame">Robot base frame id</input_port>
+            <input_port name="transform_tolerance">Transform lookup tolerance</input_port>
+        </Action>
+        <Action ID="Wait">
+            <input_port name="server_name">Server name</input_port>
+            <input_port name="server_timeout">Server timeout</input_port>
+            <input_port name="wait_duration">Wait time</input_port>
+        </Action>
+    </TreeNodesModel>
+    <!-- ////////// -->
+</root>

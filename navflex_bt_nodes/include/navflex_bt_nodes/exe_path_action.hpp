@@ -63,7 +63,7 @@ namespace navflex_bt_nodes
  *   <NavflexExePathAction
  *       path="{path}"
  *       controller_id="FollowPath"
- *       goal_checker_id="goal_checker"
+ *       goal_checker_id="general_goal_checker"
  *       outcome="{controller_outcome}"
  *       message="{controller_message}"/>
  * @endcode
@@ -97,7 +97,7 @@ public:
     ports.insert(BT::InputPort<std::string>(
       "controller_id", "FollowPath", "Controller plugin ID"));
     ports.insert(BT::InputPort<std::string>(
-      "goal_checker_id", "goal_checker", "Goal checker plugin ID"));
+      "goal_checker_id", "general_goal_checker", "Goal checker plugin ID"));
 
     // ── Outputs ───────────────────────────────────────────────────────
     ports.insert(BT::OutputPort<uint32_t>(

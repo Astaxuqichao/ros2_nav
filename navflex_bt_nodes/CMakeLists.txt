@@ -31,21 +31,25 @@ add_library(navflex_get_path_action SHARED
   src/get_path_action.cpp
 )
 ament_target_dependencies(navflex_get_path_action ${DEPS})
+target_compile_definitions(navflex_get_path_action PRIVATE BT_PLUGIN_EXPORT)
 
 add_library(navflex_exe_path_action SHARED
   src/exe_path_action.cpp
 )
 ament_target_dependencies(navflex_exe_path_action ${DEPS})
+target_compile_definitions(navflex_exe_path_action PRIVATE BT_PLUGIN_EXPORT)
 
 add_library(navflex_recovery_action SHARED
   src/recovery_action.cpp
 )
 ament_target_dependencies(navflex_recovery_action ${DEPS})
+target_compile_definitions(navflex_recovery_action PRIVATE BT_PLUGIN_EXPORT)
 
 add_library(navflex_check_cost_service SHARED
   src/check_cost_service.cpp
 )
 ament_target_dependencies(navflex_check_cost_service ${DEPS})
+target_compile_definitions(navflex_check_cost_service PRIVATE BT_PLUGIN_EXPORT)
 
 # ── Install ───────────────────────────────────────────────────────────────────
 install(TARGETS navflex_get_path_action

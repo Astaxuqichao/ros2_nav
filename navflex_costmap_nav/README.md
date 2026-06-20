@@ -38,7 +38,7 @@ NavFlex 导航框架核心包，基于 Nav2 插件体系，提供规划（Planne
 
 ```bash
 # 需先启动带路网服务器的导航栈
-ros2 launch navflex_costmap_nav navigation_launch_test.launch.py use_route_server:=True
+ros2 launch navflex_bringup navflex_bringup_launch.py use_route_server:=True
 
 # 启动交互式导航客户端
 ros2 run navflex_costmap_nav route_nav.py
@@ -114,5 +114,6 @@ navflex_costmap_nav/
 │   ├── navflex_base/               # Action/Execution 基类实现
 │   └── main.cpp
 ├── launch/                         # 启动文件
-└── params/                         # 参数文件
 ```
+
+导航参数、地图和 RViz 配置已迁移至 `navflex_bringup`。

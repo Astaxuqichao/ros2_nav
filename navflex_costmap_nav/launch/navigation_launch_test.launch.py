@@ -27,7 +27,6 @@ from nav2_common.launch import RewrittenYaml
 
 
 def launch_setup(context, *args, **kwargs):
-    bringup_dir = get_package_share_directory('navflex_costmap_nav')
     nav2_route_dir = get_package_share_directory('nav2_route')
 
     namespace = LaunchConfiguration('namespace')
@@ -113,7 +112,7 @@ def launch_setup(context, *args, **kwargs):
 
 
 def generate_launch_description():
-    bringup_dir = get_package_share_directory('navflex_costmap_nav')
+    bringup_dir = get_package_share_directory('navflex_bringup')
     nav2_route_dir = get_package_share_directory('nav2_route')
 
     stdout_linebuf_envvar = SetEnvironmentVariable(

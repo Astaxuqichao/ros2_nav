@@ -41,6 +41,30 @@ void ExePathAction::on_tick()
 void ExePathAction::on_wait_for_result(
   std::shared_ptr<const Action::Feedback> feedback)
 {
+  nav_msgs::msg::Path new_path;
+  getInput("path", new_path);
+
+  if (goal_.path != new_path && new_path != nav_msgs::msg::Path()) {
+    goal_.path = new_path;
+    goal_updated_ = true;
+  }
+
+  std::string new_controller_id;
+  getInput("controller_id", new_controller_id);
+
+  if (goal_.controller_id != new_controller_id) {
+    goal_.controller_id = new_controller_id;
+    goal_updated_ = true;
+  }
+
+  std::string new_goal_checker_id;
+  getInput("goal_checker_id", new_goal_checker_id);
+
+  if (goal_.goal_checker_id != new_goal_checker_id) {
+    goal_.goal_checker_id = new_goal_checker_id;
+    goal_updated_ = true;
+  }
+
   if (feedback) {
     setOutput("feedback_distance_to_goal", feedback->distance_to_goal);
     setOutput("feedback_speed",            feedback->speed);

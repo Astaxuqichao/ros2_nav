@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>navflex_bringup</name>
+  <version>0.0.0</version>
+  <description>Launch package for the navflex navigation stack.</description>
+  <maintainer email="xuqichao66@outlook.com">root</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>ament_index_python</depend>
+  <depend>launch</depend>
+  <depend>launch_ros</depend>
+  <depend>nav2_common</depend>
+  <depend>nav2_lifecycle_manager</depend>
+  <depend>nav2_map_server</depend>
+  <depend>nav2_bringup</depend>
+  <depend>nav2_route</depend>
+  <depend>tf2_ros</depend>
+  <depend>navflex_bt_navigator</depend>
+  <depend>navflex_costmap_nav</depend>
+  <depend>omni_fake_node</depend>
+  <depend>simulation_lidar</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

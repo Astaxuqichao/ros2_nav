@@ -100,8 +100,6 @@ install(TARGETS navflex_costmap_nav
 )
 
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
-install(DIRECTORY params DESTINATION share/${PROJECT_NAME})
-install(DIRECTORY maps DESTINATION share/${PROJECT_NAME})
 
 # 安装头文件
 install(DIRECTORY include/

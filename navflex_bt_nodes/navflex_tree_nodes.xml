@@ -98,7 +98,7 @@
       </input_port>
       <input_port name="goal_checker_id"
                   type="string"
-                  default="goal_checker">
+                  default="general_goal_checker">
         Goal checker plugin ID
       </input_port>
       <!-- ── BtActionNode base ports ── -->
