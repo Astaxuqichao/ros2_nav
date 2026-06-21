@@ -8,7 +8,7 @@ NavFlex 导航框架核心包，基于 Nav2 插件体系，提供规划（Planne
 
 ## 启动方式
 
-启动操作请参见上级仓库 `ros2_nav/README.md` 中的“启动方式”章节。
+启动操作请参见上级仓库 `navflex/README.md` 中的“启动方式”章节。
 
 ---
 

@@ -1,4 +1,4 @@
-# ros2_nav
+# navflex
 
 基于 ROS 2 Humble 的导航扩展功能包集合，在 Nav2 框架之上提供全向机器人仿真、地图仿真激光雷达、自定义代价地图导航服务端、BT 节点及辅助工具。
 
@@ -76,13 +76,13 @@
 - Nav2（`nav2_bringup`、`nav2_core`、`nav2_behavior_tree` 等）: 主要扩展nav2_core以及nav2_msgs
 - `tf2`、`tf2_ros`、`sensor_msgs`、`nav_msgs`、`geometry_msgs`
 
-### 依赖：ros2_nav 与 navigation2
+### 依赖：navflex 与 navigation2
 
 克隆本仓库及所有依赖：
 
 ```bash
 cd ~/humble_ws/navflex_ws
-git clone https://github.com/Astaxuqichao/ros2_nav.git -b main
+git clone https://github.com/Astaxuqichao/navflex.git -b main
 git clone https://github.com/Astaxuqichao/navigation2.git -b humble
 git clone https://github.com/SteveMacenski/spatio_temporal_voxel_layer.git -b humble
 ```
@@ -90,7 +90,7 @@ git clone https://github.com/SteveMacenski/spatio_temporal_voxel_layer.git -b hu
 ## 编译
 
 ```bash
-cd ~/humble_ws/navflex_ws/ros2_nav
+cd ~/humble_ws/navflex_ws
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 source install/setup.bash
 ```
