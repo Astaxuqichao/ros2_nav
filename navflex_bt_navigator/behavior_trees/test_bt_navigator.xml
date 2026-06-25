@@ -2,11 +2,11 @@
 <root main_tree_to_execute="MainTree">
     <!-- ////////// -->
     <BehaviorTree ID="MainTree">
-        <Control ID="RecoveryNode" name="NavigateRecovery" number_of_retries="6">
+        <Control ID="RecoveryNode" name="NavigateRecovery" number_of_retries="2">
             <Control ID="PipelineSequence" name="NavigateWithReplanning">
                 <Decorator ID="RateController" hz="1.0">
                     <Control ID="RecoveryNode" name="ComputePathToPose" number_of_retries="1">
-                        <Action ID="NavflexGetPathAction" goal="{goal}" message="{planner_message}" outcome="{planner_outcome}" path="{path}" planner_id="GridBased" server_name="compute_path_to_pose" server_timeout="10.0" tolerance="0.5" use_start="false"/>
+                        <Action ID="NavflexGetPathAction" goal="{goal}" message="{planner_message}" outcome="{planner_outcome}" path="{path}" planner_id="Smac2D" server_name="compute_path_to_pose" server_timeout="10.0" tolerance="0.5" use_start="false"/>
                         <Action ID="ClearEntireCostmap" name="ClearGlobalCostmap-Context" server_timeout="10.0" service_name="global_costmap/clear_entirely_global_costmap"/>
                     </Control>
                 </Decorator>

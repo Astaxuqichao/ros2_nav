@@ -190,6 +190,9 @@ void BehaviorCostmapServer::callActionDummyBehavior(
     return;
   }
 
+  RCLCPP_INFO(get_logger(), "[BehaviorServer] calling behavior plugin id=%s",
+              behavior_name.c_str());
+
   BehaviorExecution::Ptr execution = newBehaviorExecution(behavior_name);
   execution->setCommand(goal->command.data);
   behavior_action_->start(goal_handle, execution);

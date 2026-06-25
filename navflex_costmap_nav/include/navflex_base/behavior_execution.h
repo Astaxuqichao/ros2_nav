@@ -57,7 +57,7 @@ class BehaviorExecution : public NavflexExecutionBase {
   BehaviorState getState() const;
 
   /** @brief Set the command string to pass to runBehavior(). Must be called before start(). */
-  void setCommand(const std::string& cmd) { message_ = cmd; }
+  void setCommand(const std::string& cmd) { setMessage(cmd); }
 
  protected:
   /** @brief Main execution loop — calls runBehavior() and updates state. */

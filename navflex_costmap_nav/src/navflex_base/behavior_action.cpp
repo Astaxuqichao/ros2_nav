@@ -78,10 +78,11 @@ void BehaviorAction::runImpl(const GoalHandlePtr& goal_handle,
           result->outcome = Action::Result::PAT_EXCEEDED;
           result->message = "Behavior patience exceeded";
         } else {
+          const std::string execution_message = execution.getMessage();
           result->outcome = Action::Result::CANCELED;
-          result->message = execution.getMessage().empty()
+          result->message = execution_message.empty()
                                 ? "Behavior was canceled"
-                                : execution.getMessage();
+                                : execution_message;
         }
         goal_handle->abort(result);
         RCLCPP_WARN(rclcpp::get_logger(name_),

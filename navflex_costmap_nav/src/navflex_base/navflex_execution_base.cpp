@@ -57,12 +57,28 @@ std::cv_status NavflexExecutionBase::waitForStateUpdate(
   return condition_.wait_for(lock, duration);
 }
 
-uint32_t NavflexExecutionBase::getOutcome() const { return outcome_; }
+uint32_t NavflexExecutionBase::getOutcome() const { return outcome_.load(); }
 
-const std::string& NavflexExecutionBase::getMessage() const {
+std::string NavflexExecutionBase::getMessage() const {
+  std::lock_guard<std::mutex> lock(message_mtx_);
   return message_;
 }
 
 const std::string& NavflexExecutionBase::getName() const { return name_; }
+
+void NavflexExecutionBase::setOutcome(uint32_t outcome) {
+  outcome_.store(outcome);
+}
+
+void NavflexExecutionBase::setMessage(const std::string& message) {
+  std::lock_guard<std::mutex> lock(message_mtx_);
+  message_ = message;
+}
+
+void NavflexExecutionBase::setOutcomeAndMessage(
+    uint32_t outcome, const std::string& message) {
+  outcome_.store(outcome);
+  setMessage(message);
+}
 
 }  // namespace navflex_costmap_nav

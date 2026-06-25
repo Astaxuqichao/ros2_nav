@@ -319,7 +319,8 @@ void ControllerCostmapServer::callActionFollowPath(
   const auto& end = normalized_path.poses.back().pose.position;
   RCLCPP_INFO(
       get_logger(),
-      "[FollowPath] goal accepted: controller=%s goal_checker=%s poses=%zu frame=%s start=(%.2f, %.2f) goal=(%.2f, %.2f)",
+      "[FollowPath] calling controller plugin id=%s goal_checker plugin id=%s "
+      "poses=%zu frame=%s start=(%.2f, %.2f) goal=(%.2f, %.2f)",
       controller_id.c_str(), goal_checker_id.c_str(),
       normalized_path.poses.size(), normalized_path.header.frame_id.c_str(),
       start.x, start.y, end.x, end.y);

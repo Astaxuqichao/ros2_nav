@@ -417,6 +417,9 @@ uint32_t PlannerExecution::makePlan(const geometry_msgs::msg::PoseStamped& start
   (void)tolerance;
 
   nav_msgs::msg::Path nav2_plan;
+  RCLCPP_DEBUG(node_handle_->get_logger(),
+               "[PlannerExecution] calling planner plugin id=%s",
+               name_.c_str());
   const uint32_t outcome = planner_->makePlan(start, goal, nav2_plan, message);
   plan = nav2_plan.poses;
   cost = sumDistance(plan.begin(), plan.end());
@@ -590,8 +593,12 @@ uint32_t PlannerExecution::makePlan(const geometry_msgs::msg::PoseStamped& start
 
           // Reset per-attempt timer so patience tracks single makePlan() call duration
           last_call_start_time_ = node_handle_->now();
-          outcome_ = makePlan(current_start, current_goal, current_tolerance, plan, cost, message_);
-          bool success = outcome_ < 10;
+          std::string planning_message;
+          const uint32_t outcome = makePlan(
+              current_start, current_goal, current_tolerance, plan, cost,
+              planning_message);
+          setOutcomeAndMessage(outcome, planning_message);
+          bool success = outcome < 10;
 
           std::lock_guard<std::mutex> guard(configuration_mutex_);
 
@@ -604,8 +611,9 @@ uint32_t PlannerExecution::makePlan(const geometry_msgs::msg::PoseStamped& start
           else if (success)
           {
             RCLCPP_INFO(node_handle_->get_logger(),
-                        "[PlannerExecution] Successfully found a plan (outcome=%u, cost=%.3f, poses=%zu, elapsed=%.2fs)",
-                        outcome_, cost, plan.size(),
+                        "[PlannerExecution] Successfully found a plan with planner plugin id=%s "
+                        "(outcome=%u, cost=%.3f, poses=%zu, elapsed=%.2fs)",
+                        name_.c_str(), outcome, cost, plan.size(),
                         (node_handle_->now() - last_call_start_time_).seconds());
 
             std::lock_guard<std::mutex> plan_mtx_guard(plan_mtx_);
@@ -646,8 +654,8 @@ uint32_t PlannerExecution::makePlan(const geometry_msgs::msg::PoseStamped& start
             RCLCPP_WARN(node_handle_->get_logger(),
                         "[PlannerExecution] Planning attempt failed, retrying... "
                         "(outcome=%u, retry=%d, elapsed=%.2fs/patience=%.1fs) | %s",
-                        outcome_, retries + 1, elapsed, patience_.seconds(),
-                        message_.empty() ? "no message" : message_.c_str());
+                        outcome, retries + 1, elapsed, patience_.seconds(),
+                        planning_message.empty() ? "no message" : planning_message.c_str());
           }
         }
       } // while (planning_ && ros::ok())

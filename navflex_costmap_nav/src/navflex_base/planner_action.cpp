@@ -231,30 +231,36 @@ void PlannerAction::runImpl(const GoalHandlePtr& goal_handle,
         planner_active = false;
         break;
 
-        // no plan found
+      // no plan found
       case PlannerExecution::NO_PLAN_FOUND:
+      {
+        const std::string execution_message = execution.getMessage();
         RCLCPP_ERROR(rclcpp::get_logger(name_),
                      "[PlannerAction] NO_PLAN_FOUND: start=(%.3f, %.3f) goal=(%.3f, %.3f) tolerance=%.3fm | %s",
                      start_pose.pose.position.x, start_pose.pose.position.y,
                      goal.goal.pose.position.x, goal.goal.pose.position.y,
-                     tolerance, execution.getMessage().c_str());
+                     tolerance, execution_message.c_str());
         result->outcome = execution.getOutcome();
-        result->message = execution.getMessage();
+        result->message = execution_message;
         goal_handle->abort(result);
         planner_active = false;
         break;
+      }
 
       case PlannerExecution::MAX_RETRIES:
+      {
+        const std::string execution_message = execution.getMessage();
         RCLCPP_ERROR(rclcpp::get_logger(name_),
                      "[PlannerAction] MAX_RETRIES: start=(%.3f, %.3f) goal=(%.3f, %.3f) tolerance=%.3fm | %s",
                      start_pose.pose.position.x, start_pose.pose.position.y,
                      goal.goal.pose.position.x, goal.goal.pose.position.y,
-                     tolerance, execution.getMessage().c_str());
+                     tolerance, execution_message.c_str());
         result->outcome = execution.getOutcome();
-        result->message = execution.getMessage();
+        result->message = execution_message;
         goal_handle->abort(result);
         planner_active = false;
         break;
+      }
 
       case PlannerExecution::PAT_EXCEEDED:
         RCLCPP_ERROR(rclcpp::get_logger(name_),
@@ -269,16 +275,19 @@ void PlannerAction::runImpl(const GoalHandlePtr& goal_handle,
         break;
 
       case PlannerExecution::INTERNAL_ERROR:
+      {
+        const std::string execution_message = execution.getMessage();
         RCLCPP_FATAL(rclcpp::get_logger(name_),
                      "[PlannerAction] INTERNAL_ERROR: start=(%.3f, %.3f) goal=(%.3f, %.3f) | %s",
                      start_pose.pose.position.x, start_pose.pose.position.y,
                      goal.goal.pose.position.x, goal.goal.pose.position.y,
-                     execution.getMessage().empty() ? "unknown error" : execution.getMessage().c_str());
+                     execution_message.empty() ? "unknown error" : execution_message.c_str());
         result->outcome = ActionToPose::Result::INTERNAL_ERROR;
         result->message = "Internal planner error";
         planner_active = false;
         goal_handle->abort(result);
         break;
+      }
 
       default:
         std::ostringstream ss;

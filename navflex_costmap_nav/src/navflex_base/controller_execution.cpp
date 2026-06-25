@@ -96,17 +96,17 @@ rcl_interfaces::msg::SetParametersResult ControllerExecution::reconfigure(
 }
 
 bool ControllerExecution::start() {
-  if (moving_) {
+  if (moving_.load()) {
     RCLCPP_WARN(node_handle_->get_logger(), "[ControllerExecution] start() called but already moving for %s", name_.c_str());
     return false;  // already running
   }
-  moving_ = true;
+  moving_.store(true);
   setState(STARTED);
   RCLCPP_DEBUG(node_handle_->get_logger(), "[ControllerExecution] start() called, starting thread for %s", name_.c_str());
   bool started = NavflexExecutionBase::start();
   if (!started) {
     RCLCPP_ERROR(node_handle_->get_logger(), "[ControllerExecution] NavflexExecutionBase::start() failed for %s", name_.c_str());
-    moving_ = false;
+    moving_.store(false);
   }
   return started;
 }
@@ -175,7 +175,7 @@ geometry_msgs::msg::TwistStamped ControllerExecution::getVelocityCmd() const {
 }
 
 bool ControllerExecution::isMoving() const {
-  return moving_;
+  return moving_.load();
 }
 
 bool ControllerExecution::isPatienceExceeded() const {
@@ -222,10 +222,10 @@ void ControllerExecution::run() {
 
   nav_msgs::msg::Path path;
   if (!hasNewPlan()) {
-    outcome_ = ActionFollowPath::Result::INVALID_PATH;
-    message_ = "Controller started without a plan";
+    setOutcomeAndMessage(ActionFollowPath::Result::INVALID_PATH,
+                         "Controller started without a plan");
     setState(NO_PLAN);
-    moving_ = false;
+    moving_.store(false);
     RCLCPP_ERROR(node_handle_->get_logger(), "[ControllerExecution] started without a plan! %s", name_.c_str());
     condition_.notify_all();
     RCLCPP_INFO(node_handle_->get_logger(), "[ControllerExecution] run() thread exiting (no plan) for %s", name_.c_str());
@@ -240,201 +240,203 @@ void ControllerExecution::run() {
 
   int retries = 0;
 
-  while (moving_ && rclcpp::ok()) {
-      // Check for forced stop
+  while (moving_.load() && rclcpp::ok()) {
+    // Check for forced stop
+    {
+      std::unique_lock<std::mutex> lock(should_exit_mutex_);
+      if (should_exit_) {
+        RCLCPP_INFO(node_handle_->get_logger(), "[ControllerExecution] Forced stop detected for %s", name_.c_str());
+        publishZeroVelocity();
+        setState(STOPPED);
+        condition_.notify_all();
+        moving_.store(false);
+        RCLCPP_INFO(node_handle_->get_logger(), "[ControllerExecution] run() thread exiting (forced stop) for %s", name_.c_str());
+        return;
+      }
+    }
+
+    // Check cancel flag
+    if (cancel_) {
+      RCLCPP_INFO(node_handle_->get_logger(), "[ControllerExecution] Cancel detected for %s", name_.c_str());
+      publishZeroVelocity();
+      setState(CANCELED);
+      moving_.store(false);
+      condition_.notify_all();
+      RCLCPP_INFO(node_handle_->get_logger(), "[ControllerExecution] run() thread exiting (cancel) for %s", name_.c_str());
+      return;
+    }
+
+    // Update plan if a new one has arrived
+    if (hasNewPlan()) {
+      path = getNewPlan();
+      RCLCPP_INFO(node_handle_->get_logger(),
+                  "[FollowPath] tracking path update: controller=%s poses=%zu frame=%s",
+                  name_.c_str(), path.poses.size(),
+                  path.header.frame_id.c_str());
+      if (path.poses.empty()) {
+        setOutcomeAndMessage(ActionFollowPath::Result::INVALID_PATH,
+                             "Controller received an empty plan");
+        setState(EMPTY_PLAN);
+        moving_.store(false);
+        condition_.notify_all();
+        RCLCPP_WARN(node_handle_->get_logger(), "[ControllerExecution] Received empty plan, exiting for %s", name_.c_str());
+        return;
+      }
+      if (path.header.frame_id != global_frame_) {
+        RCLCPP_WARN(node_handle_->get_logger(),
+                    "[ControllerExecution] Plan frame '%s' differs from costmap global frame '%s' for %s. Controller will rely on TF transforms.",
+                    path.header.frame_id.c_str(), global_frame_.c_str(),
+                    name_.c_str());
+      }
+      controller_->setPlan(path);
+      if (goal_checker_) {
+        goal_checker_->reset();
+      }
+      if (current_goal_pub_) {
+        current_goal_pub_->publish(path.poses.back());
+      }
+    }
+
+    // Skip if no plan yet
+    if (path.poses.empty()) {
+      setOutcomeAndMessage(ActionFollowPath::Result::INVALID_PATH,
+                           "Controller has no plan to follow");
+      setState(NO_PLAN);
+      moving_.store(false);
+      condition_.notify_all();
+      RCLCPP_ERROR(node_handle_->get_logger(), "[ControllerExecution] No plan available, exiting for %s", name_.c_str());
+      return;
+    }
+
+    // Get robot pose
+    if (!robot_info_->getRobotPose(robot_pose_)) {
+      setOutcomeAndMessage(ActionFollowPath::Result::TF_ERROR,
+                           "Could not get the robot pose");
+      publishZeroVelocity();
+      setState(INTERNAL_ERROR);
+      moving_.store(false);
+      condition_.notify_all();
+      RCLCPP_ERROR(node_handle_->get_logger(), "[ControllerExecution] Could not get robot pose, exiting for %s", name_.c_str());
+      return;
+    }
+
+    // Check goal reached
+    if (goal_checker_) {
+      geometry_msgs::msg::TwistStamped vel_stamped;
+      robot_info_->getRobotVelocity(vel_stamped);
+      const auto & gp = path.poses.back().pose.position;
+      const auto & rp = robot_pose_.pose.position;
+      const double dist_to_goal =
+        std::hypot(gp.x - rp.x, gp.y - rp.y);
+      RCLCPP_DEBUG_THROTTLE(
+        node_handle_->get_logger(), *node_handle_->get_clock(), 1000,
+        "[ControllerExecution] goal dist=%.3f for %s", dist_to_goal,
+        name_.c_str());
+      if (goal_checker_->isGoalReached(
+              robot_pose_.pose, path.poses.back().pose, vel_stamped.twist)) {
+        RCLCPP_INFO(node_handle_->get_logger(), "[ControllerExecution] Goal reached for %s", name_.c_str());
+        publishZeroVelocity();
+        setState(ARRIVED_GOAL);
+        moving_.store(false);
+        condition_.notify_all();
+        break;
+      }
+    }
+
+    setState(PLANNING);
+    RCLCPP_DEBUG(node_handle_->get_logger(), "[ControllerExecution] State set to PLANNING for %s", name_.c_str());
+
+    // Record call time
+    {
+      std::lock_guard<std::mutex> guard(lct_mtx_);
+      last_call_time_ = node_handle_->now();
+    }
+
+    // Compute velocity through outcome/message interface.
+    geometry_msgs::msg::TwistStamped robot_velocity;
+    robot_info_->getRobotVelocity(robot_velocity);
+
+    geometry_msgs::msg::TwistStamped cmd_vel_stamped;
+    std::string compute_message;
+    const uint32_t outcome = computeVelocityCmd(
+        robot_pose_, robot_velocity, cmd_vel_stamped, compute_message);
+    setOutcomeAndMessage(outcome, compute_message);
+
+    if (cmd_vel_stamped.header.frame_id.empty()) {
+      cmd_vel_stamped.header.frame_id = robot_frame_;
+    }
+
+    if (outcome < 10) {
+      // Success path
+      {
+        std::lock_guard<std::mutex> guard(vel_cmd_mtx_);
+        vel_cmd_stamped_ = cmd_vel_stamped;
+        if (vel_cmd_stamped_.header.stamp.sec == 0 &&
+            vel_cmd_stamped_.header.stamp.nanosec == 0) {
+          vel_cmd_stamped_.header.stamp = node_handle_->now();
+        }
+      }
+      vel_pub_->publish(cmd_vel_stamped.twist);
+      RCLCPP_DEBUG(node_handle_->get_logger(), "[ControllerExecution] Published velocity (%.3f, %.3f, %.3f) for %s", cmd_vel_stamped.twist.linear.x, cmd_vel_stamped.twist.linear.y, cmd_vel_stamped.twist.angular.z, name_.c_str());
+      {
+        std::lock_guard<std::mutex> guard(lct_mtx_);
+        last_valid_cmd_time_ = node_handle_->now();
+      }
+      retries = 0;
+      setState(GOT_LOCAL_CMD);
+      RCLCPP_DEBUG(node_handle_->get_logger(), "[ControllerExecution] State set to GOT_LOCAL_CMD for %s", name_.c_str());
+    } else if (outcome == ActionFollowPath::Result::CANCELED) {
+      RCLCPP_INFO(node_handle_->get_logger(),
+                  "[ControllerExecution] Controller-handled cancel completed for %s",
+                  name_.c_str());
+      cancel_ = true;
+      continue;
+    } else {
+      std::lock_guard<std::mutex> guard(configuration_mutex_);
+      if (max_retries_ >= 0 && ++retries > max_retries_) {
+        setState(MAX_RETRIES);
+        publishZeroVelocity();
+        moving_.store(false);
+        RCLCPP_WARN(node_handle_->get_logger(), "[ControllerExecution] Exceeded max retries, exiting for %s", name_.c_str());
+      } else if (isPatienceExceeded()) {
+        setOutcome(ActionFollowPath::Result::PAT_EXCEEDED);
+        if (getMessage().empty()) {
+          setMessage("Controller patience exceeded");
+        }
+        setState(PAT_EXCEEDED);
+        publishZeroVelocity();
+        moving_.store(false);
+        RCLCPP_WARN(node_handle_->get_logger(), "[ControllerExecution] Patience exceeded, exiting for %s", name_.c_str());
+      } else {
+        setState(NO_LOCAL_CMD);
+        publishZeroVelocity();
+        RCLCPP_WARN_THROTTLE(node_handle_->get_logger(), *node_handle_->get_clock(), 1000,
+                             "[ControllerExecution] No local cmd, will retry for %s", name_.c_str());
+      }
+    }
+
+    condition_.notify_all();
+
+    if (moving_.load()) {
+      if (loop_rate_ && !loop_rate_->sleep()) {
+        RCLCPP_WARN_THROTTLE(node_handle_->get_logger(),
+                             *node_handle_->get_clock(), 1000,
+                             "[ControllerExecution] Loop missed desired rate %.4f Hz for %s!",
+                             frequency_, name_.c_str());
+      }
       {
         std::unique_lock<std::mutex> lock(should_exit_mutex_);
         if (should_exit_) {
-          RCLCPP_INFO(node_handle_->get_logger(), "[ControllerExecution] Forced stop detected for %s", name_.c_str());
+          RCLCPP_DEBUG(node_handle_->get_logger(), "[ControllerExecution] Forced stop detected (loop) for %s", name_.c_str());
           publishZeroVelocity();
           setState(STOPPED);
           condition_.notify_all();
-          moving_ = false;
-          RCLCPP_INFO(node_handle_->get_logger(), "[ControllerExecution] run() thread exiting (forced stop) for %s", name_.c_str());
+          moving_.store(false);
           return;
-        }
-      }
-
-      // Check cancel flag
-      if (cancel_) {
-        RCLCPP_INFO(node_handle_->get_logger(), "[ControllerExecution] Cancel detected for %s", name_.c_str());
-        publishZeroVelocity();
-        setState(CANCELED);
-        moving_ = false;
-        condition_.notify_all();
-        RCLCPP_INFO(node_handle_->get_logger(), "[ControllerExecution] run() thread exiting (cancel) for %s", name_.c_str());
-        return;
-      }
-
-      // Update plan if a new one has arrived
-      if (hasNewPlan()) {
-        path = getNewPlan();
-        RCLCPP_INFO(node_handle_->get_logger(),
-                    "[FollowPath] tracking path update: controller=%s poses=%zu frame=%s",
-                    name_.c_str(), path.poses.size(),
-                    path.header.frame_id.c_str());
-        if (path.poses.empty()) {
-          outcome_ = ActionFollowPath::Result::INVALID_PATH;
-          message_ = "Controller received an empty plan";
-          setState(EMPTY_PLAN);
-          moving_ = false;
-          condition_.notify_all();
-          RCLCPP_WARN(node_handle_->get_logger(), "[ControllerExecution] Received empty plan, exiting for %s", name_.c_str());
-          return;
-        }
-        if (path.header.frame_id != global_frame_) {
-          RCLCPP_WARN(node_handle_->get_logger(),
-                      "[ControllerExecution] Plan frame '%s' differs from costmap global frame '%s' for %s. Controller will rely on TF transforms.",
-                      path.header.frame_id.c_str(), global_frame_.c_str(),
-                      name_.c_str());
-        }
-        controller_->setPlan(path);
-        if (goal_checker_) {
-          goal_checker_->reset();
-        }
-        if (current_goal_pub_) {
-          current_goal_pub_->publish(path.poses.back());
-        }
-      }
-
-      // Skip if no plan yet
-      if (path.poses.empty()) {
-        outcome_ = ActionFollowPath::Result::INVALID_PATH;
-        message_ = "Controller has no plan to follow";
-        setState(NO_PLAN);
-        moving_ = false;
-        condition_.notify_all();
-        RCLCPP_ERROR(node_handle_->get_logger(), "[ControllerExecution] No plan available, exiting for %s", name_.c_str());
-        return;
-      }
-
-      // Get robot pose
-      if (!robot_info_->getRobotPose(robot_pose_)) {
-        message_ = "Could not get the robot pose";
-        outcome_ = ActionFollowPath::Result::TF_ERROR;
-        publishZeroVelocity();
-        setState(INTERNAL_ERROR);
-        moving_ = false;
-        condition_.notify_all();
-        RCLCPP_ERROR(node_handle_->get_logger(), "[ControllerExecution] Could not get robot pose, exiting for %s", name_.c_str());
-        return;
-      }
-
-      // Check goal reached
-      if (goal_checker_) {
-        geometry_msgs::msg::TwistStamped vel_stamped;
-        robot_info_->getRobotVelocity(vel_stamped);
-        const auto & gp = path.poses.back().pose.position;
-        const auto & rp = robot_pose_.pose.position;
-        const double dist_to_goal =
-          std::hypot(gp.x - rp.x, gp.y - rp.y);
-        RCLCPP_DEBUG_THROTTLE(
-          node_handle_->get_logger(), *node_handle_->get_clock(), 1000,
-          "[ControllerExecution] goal dist=%.3f for %s", dist_to_goal,
-          name_.c_str());
-        if (goal_checker_->isGoalReached(
-                robot_pose_.pose, path.poses.back().pose, vel_stamped.twist)) {
-          RCLCPP_INFO(node_handle_->get_logger(), "[ControllerExecution] Goal reached for %s", name_.c_str());
-          publishZeroVelocity();
-          setState(ARRIVED_GOAL);
-          moving_ = false;
-          condition_.notify_all();
-          break;
-        }
-      }
-
-      setState(PLANNING);
-      RCLCPP_DEBUG(node_handle_->get_logger(), "[ControllerExecution] State set to PLANNING for %s", name_.c_str());
-
-      // Record call time
-      {
-        std::lock_guard<std::mutex> guard(lct_mtx_);
-        last_call_time_ = node_handle_->now();
-      }
-
-      // Compute velocity through outcome/message interface.
-      geometry_msgs::msg::TwistStamped robot_velocity;
-      robot_info_->getRobotVelocity(robot_velocity);
-
-      geometry_msgs::msg::TwistStamped cmd_vel_stamped;
-      outcome_ = computeVelocityCmd(robot_pose_, robot_velocity,
-                                    cmd_vel_stamped, message_);
-
-      if (cmd_vel_stamped.header.frame_id.empty()) {
-        cmd_vel_stamped.header.frame_id = robot_frame_;
-      }
-
-      if (outcome_ < 10) {
-        // Success path
-        {
-          std::lock_guard<std::mutex> guard(vel_cmd_mtx_);
-          vel_cmd_stamped_ = cmd_vel_stamped;
-          if (vel_cmd_stamped_.header.stamp.sec == 0 &&
-              vel_cmd_stamped_.header.stamp.nanosec == 0) {
-            vel_cmd_stamped_.header.stamp = node_handle_->now();
-          }
-        }
-        vel_pub_->publish(cmd_vel_stamped.twist);
-        RCLCPP_DEBUG(node_handle_->get_logger(), "[ControllerExecution] Published velocity (%.3f, %.3f, %.3f) for %s", cmd_vel_stamped.twist.linear.x, cmd_vel_stamped.twist.linear.y, cmd_vel_stamped.twist.angular.z, name_.c_str());
-        {
-          std::lock_guard<std::mutex> guard(lct_mtx_);
-          last_valid_cmd_time_ = node_handle_->now();
-        }
-        retries = 0;
-        setState(GOT_LOCAL_CMD);
-        RCLCPP_DEBUG(node_handle_->get_logger(), "[ControllerExecution] State set to GOT_LOCAL_CMD for %s", name_.c_str());
-      } else if (outcome_ == ActionFollowPath::Result::CANCELED) {
-        RCLCPP_INFO(node_handle_->get_logger(),
-                    "[ControllerExecution] Controller-handled cancel completed for %s",
-                    name_.c_str());
-        cancel_ = true;
-        continue;
-      } else {
-        std::lock_guard<std::mutex> guard(configuration_mutex_);
-        if (max_retries_ >= 0 && ++retries > max_retries_) {
-          setState(MAX_RETRIES);
-          publishZeroVelocity();
-          moving_ = false;
-          RCLCPP_WARN(node_handle_->get_logger(), "[ControllerExecution] Exceeded max retries, exiting for %s", name_.c_str());
-        } else if (isPatienceExceeded()) {
-          outcome_ = ActionFollowPath::Result::PAT_EXCEEDED;
-          if (message_.empty()) {
-            message_ = "Controller patience exceeded";
-          }
-          setState(PAT_EXCEEDED);
-          publishZeroVelocity();
-          moving_ = false;
-          RCLCPP_WARN(node_handle_->get_logger(), "[ControllerExecution] Patience exceeded, exiting for %s", name_.c_str());
-        } else {
-          setState(NO_LOCAL_CMD);
-          publishZeroVelocity();
-          RCLCPP_WARN_THROTTLE(node_handle_->get_logger(), *node_handle_->get_clock(), 1000,
-                               "[ControllerExecution] No local cmd, will retry for %s", name_.c_str());
-        }
-      }
-
-      condition_.notify_all();
-
-      if (moving_) {
-        if (loop_rate_ && !loop_rate_->sleep()) {
-          RCLCPP_WARN_THROTTLE(node_handle_->get_logger(),
-                               *node_handle_->get_clock(), 1000,
-                               "[ControllerExecution] Loop missed desired rate %.4f Hz for %s!",
-                               frequency_, name_.c_str());
-        }
-        {
-          std::unique_lock<std::mutex> lock(should_exit_mutex_);
-          if (should_exit_) {
-            RCLCPP_DEBUG(node_handle_->get_logger(), "[ControllerExecution] Forced stop detected (loop) for %s", name_.c_str());
-            publishZeroVelocity();
-            setState(STOPPED);
-            condition_.notify_all();
-            moving_ = false;
-            return;
-          }
         }
       }
     }
+  }
   RCLCPP_DEBUG(node_handle_->get_logger(), "[ControllerExecution] run() thread exiting normally for %s", name_.c_str());
 }
 

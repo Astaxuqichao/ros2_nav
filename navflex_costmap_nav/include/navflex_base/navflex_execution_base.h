@@ -192,9 +192,9 @@ public:
    *
    * Valid only after execution completes.
    *
-   * @return Reference to outcome message string
+   * @return Copy of the current outcome message string
    */
-  const std::string& getMessage() const;
+  std::string getMessage() const;
 
   /**
    * @brief Get the name identifier for this execution
@@ -248,14 +248,18 @@ protected:
    * - Notify condition_variable when state changes
    *
    * **Thread Safety:**
-   * - outcome_ access: Should use mutex or atomic operations
-   * - message_ access: Should use mutex or atomic operations
-   * - Special flags (cancel_, should_exit_): Use provided mutexes
+   * - outcome_ access: use setOutcome() / getOutcome()
+   * - message_ access: use setMessage() / getMessage()
+   * - Special flags (cancel_, should_exit_): use atomics / provided mutexes
    *
    * @note Default implementation provided; override in derived classes
    * @see preRun(), postRun() for setup/cleanup
    */
   virtual void run() {};
+
+  void setOutcome(uint32_t outcome);
+  void setMessage(const std::string& message);
+  void setOutcomeAndMessage(uint32_t outcome, const std::string& message);
 
   // ========== Protected Member Access ==========
   /// Condition variable for thread synchronization - notify when state changes
@@ -277,10 +281,11 @@ protected:
   std::atomic<bool> cancel_;
 
   /// Latest execution outcome code (0 = success, others = error)
-  uint32_t outcome_;
+  std::atomic<uint32_t> outcome_;
 
   /// Human-readable outcome message ("Success", "Failed to plan", etc.)
   std::string message_;
+  mutable std::mutex message_mtx_;
 
   /// Name identifier for this execution (for logging)
   std::string name_;

@@ -11,7 +11,16 @@ ControllerAction::ControllerAction(
     const rclcpp_lifecycle::LifecycleNode::SharedPtr& node,
     const std::string& name,
     const navflex_utility::RobotInformation::ConstPtr& robot_info)
-    : NavflexActionBase(node, name, robot_info) {}
+    : NavflexActionBase(node, name, robot_info) {
+  if (!node_->has_parameter("controller_stuck_timeout")) {
+    node_->declare_parameter("controller_stuck_timeout",
+                             rclcpp::ParameterValue(60.0));
+  }
+  if (!node_->has_parameter("controller_stuck_distance")) {
+    node_->declare_parameter("controller_stuck_distance",
+                             rclcpp::ParameterValue(0.5));
+  }
+}
 
 void ControllerAction::start(const GoalHandlePtr& goal_handle,
                               ControllerExecution::Ptr execution_ptr) {
@@ -132,15 +141,16 @@ void ControllerAction::runImpl(const GoalHandlePtr& goal_handle,
     }
 
     const uint32_t execution_outcome = execution.getOutcome();
+    const std::string execution_message = execution.getMessage();
     result->outcome = (execution_outcome == ActionFollowPath::Result::SUCCESS &&
                        fallback_outcome != ActionFollowPath::Result::SUCCESS)
                           ? fallback_outcome
                           : execution_outcome;
 
-    if (execution.getMessage().empty()) {
+    if (execution_message.empty()) {
       result->message = fallback_message;
     } else {
-      result->message = execution.getMessage();
+      result->message = execution_message;
     }
 
     result->final_pose = robot_pose;
@@ -168,6 +178,76 @@ void ControllerAction::runImpl(const GoalHandlePtr& goal_handle,
   }
 
   bool controller_active = true;
+  double stuck_timeout_sec = 60.0;
+  double stuck_distance_m = 0.5;
+  node_->get_parameter("controller_stuck_timeout", stuck_timeout_sec);
+  node_->get_parameter("controller_stuck_distance", stuck_distance_m);
+  const bool stuck_detection_enabled =
+      stuck_timeout_sec > 0.0 && stuck_distance_m >= 0.0;
+  bool stuck_window_initialized = false;
+  rclcpp::Time stuck_window_start;
+  geometry_msgs::msg::PoseStamped stuck_window_pose;
+
+  auto reset_stuck_window = [&](const geometry_msgs::msg::PoseStamped& pose,
+                                const std::string& reason) {
+    if (!stuck_detection_enabled) {
+      return;
+    }
+    stuck_window_initialized = true;
+    stuck_window_start = node_->now();
+    stuck_window_pose = pose;
+    RCLCPP_DEBUG(
+        rclcpp::get_logger(name_),
+        "[ControllerAction] Reset stuck detection window (%s): pose=(%.3f, %.3f), timeout=%.2fs, distance=%.3fm",
+        reason.c_str(), pose.pose.position.x, pose.pose.position.y,
+        stuck_timeout_sec, stuck_distance_m);
+  };
+
+  auto check_stuck = [&](const geometry_msgs::msg::PoseStamped& pose,
+                         std::string& stuck_message) {
+    if (!stuck_detection_enabled) {
+      return false;
+    }
+    if (!stuck_window_initialized) {
+      reset_stuck_window(pose, "initial pose");
+      return false;
+    }
+
+    const rclcpp::Time now = node_->now();
+    const rclcpp::Duration elapsed = now - stuck_window_start;
+    if (elapsed.nanoseconds() < 0) {
+      reset_stuck_window(pose, "time moved backwards");
+      return false;
+    }
+
+    const double moved = navflex_utility::distance(pose, stuck_window_pose);
+    if (moved >= stuck_distance_m) {
+      reset_stuck_window(pose, "progress made");
+      return false;
+    }
+
+    if (elapsed.seconds() >= stuck_timeout_sec) {
+      std::ostringstream msg;
+      msg << "Controller detected robot stuck: moved " << moved
+          << " m in " << elapsed.seconds() << " s"
+          << " (threshold: < " << stuck_distance_m << " m within "
+          << stuck_timeout_sec << " s)";
+      stuck_message = msg.str();
+      return true;
+    }
+    return false;
+  };
+
+  if (stuck_detection_enabled) {
+    RCLCPP_INFO(
+        rclcpp::get_logger(name_),
+        "[ControllerAction] Stuck detection enabled: timeout=%.2fs distance=%.3fm",
+        stuck_timeout_sec, stuck_distance_m);
+  } else {
+    RCLCPP_INFO(rclcpp::get_logger(name_),
+                "[ControllerAction] Stuck detection disabled: timeout=%.2fs distance=%.3fm",
+                stuck_timeout_sec, stuck_distance_m);
+  }
 
   while (controller_active && rclcpp::ok()) {
     // Consume any pending preempt goal handle (set by start() under goal_mtx_).
@@ -185,9 +265,11 @@ void ControllerAction::runImpl(const GoalHandlePtr& goal_handle,
 
     // Update robot pose
     geometry_msgs::msg::PoseStamped current_pose;
+    bool current_pose_valid = false;
     if (robot_info_ && robot_info_->getRobotPose(current_pose)) {
       std::lock_guard<std::mutex> gp_guard(goal_mtx_);
       robot_pose_ = current_pose;
+      current_pose_valid = true;
     }
 
     // Check for cancel
@@ -201,6 +283,23 @@ void ControllerAction::runImpl(const GoalHandlePtr& goal_handle,
       current_handle->canceled(result);
       RCLCPP_INFO(rclcpp::get_logger(name_), "[ControllerAction] runImpl() canceled and exited for goal_handle %p", current_handle.get());
       return;
+    }
+
+    if (current_pose_valid) {
+      std::string stuck_message;
+      if (check_stuck(current_pose, stuck_message)) {
+        RCLCPP_ERROR(rclcpp::get_logger(name_),
+                     "[ControllerAction] %s goal_handle=%p",
+                     stuck_message.c_str(), current_handle.get());
+        execution.stop();
+        execution.join();
+        auto result = build_result(ActionFollowPath::Result::ROBOT_STUCK,
+                                   stuck_message);
+        result->outcome = ActionFollowPath::Result::ROBOT_STUCK;
+        result->message = stuck_message;
+        current_handle->abort(result);
+        return;
+      }
     }
 
     const auto state = execution.getState();
@@ -250,8 +349,9 @@ void ControllerAction::runImpl(const GoalHandlePtr& goal_handle,
         RCLCPP_WARN(rclcpp::get_logger(name_), "[ControllerAction] State: MAX_RETRIES for goal_handle %p. Controller exceeded max retries.", current_handle.get());
         auto result = build_result(ActionFollowPath::Result::NO_VALID_CMD,
                                    "Controller exceeded max retries");
+        const std::string execution_message = execution.getMessage();
         RCLCPP_ERROR(rclcpp::get_logger(name_), "[ControllerAction] Abort reason: %s",
-                     execution.getMessage().empty() ? "Controller exceeded max retries." : execution.getMessage().c_str());
+                     execution_message.empty() ? "Controller exceeded max retries." : execution_message.c_str());
         current_handle->abort(result);
         controller_active = false;
         break;
@@ -284,8 +384,9 @@ void ControllerAction::runImpl(const GoalHandlePtr& goal_handle,
           RCLCPP_ERROR(rclcpp::get_logger(name_), "[ControllerAction] State: NO_LOCAL_CMD and not moving, aborting goal_handle %p", current_handle.get());
           auto result = build_result(ActionFollowPath::Result::NO_VALID_CMD,
                                      "No valid velocity command from controller");
+          const std::string execution_message = execution.getMessage();
           RCLCPP_ERROR(rclcpp::get_logger(name_), "[ControllerAction] Abort reason: %s",
-                       execution.getMessage().empty() ? "No velocity command from controller." : execution.getMessage().c_str());
+                       execution_message.empty() ? "No velocity command from controller." : execution_message.c_str());
           current_handle->abort(result);
           controller_active = false;
         } else {

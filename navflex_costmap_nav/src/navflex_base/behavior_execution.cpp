@@ -55,8 +55,9 @@ void BehaviorExecution::run() {
   setState(STARTED);
 
   if (should_exit_) {
-    outcome_ = nav2_msgs::action::DummyBehavior::Result::STOPPED;
-    message_ = "Behavior execution stopped before start";
+    setOutcomeAndMessage(
+        nav2_msgs::action::DummyBehavior::Result::STOPPED,
+        "Behavior execution stopped before start");
     setState(STOPPED);
     return;
   }
@@ -65,35 +66,37 @@ void BehaviorExecution::run() {
 
   try {
     if (!behavior_) {
-      outcome_ = nav2_msgs::action::DummyBehavior::Result::INTERNAL_ERROR;
-      message_ = "Behavior plugin is null";
+      setOutcomeAndMessage(
+          nav2_msgs::action::DummyBehavior::Result::INTERNAL_ERROR,
+          "Behavior plugin is null");
       setState(INTERNAL_ERROR);
       return;
     }
 
-    // message_ holds the command string (set before start() is called);
+    // The message field holds the command string (set before start() is called);
     // runBehavior() reads it as input and overwrites it with a status message.
-    std::string cmd = message_;
-    outcome_ = behavior_->runBehavior(cmd);
-    message_ = cmd;
+    std::string cmd = getMessage();
+    setOutcome(behavior_->runBehavior(cmd));
+    setMessage(cmd);
   } catch (const std::exception& e) {
-    outcome_ = nav2_msgs::action::DummyBehavior::Result::INTERNAL_ERROR;
-    message_ = std::string("Exception in runBehavior: ") + e.what();
+    setOutcomeAndMessage(
+        nav2_msgs::action::DummyBehavior::Result::INTERNAL_ERROR,
+        std::string("Exception in runBehavior: ") + e.what());
     setState(INTERNAL_ERROR);
     return;
   } catch (...) {
-    outcome_ = nav2_msgs::action::DummyBehavior::Result::INTERNAL_ERROR;
-    message_ = "Unknown exception in runBehavior";
+    setOutcomeAndMessage(
+        nav2_msgs::action::DummyBehavior::Result::INTERNAL_ERROR,
+        "Unknown exception in runBehavior");
     setState(INTERNAL_ERROR);
     return;
   }
 
   using Result = nav2_msgs::action::DummyBehavior::Result;
   if (cancel_ || should_exit_) {
-    outcome_ = Result::CANCELED;
-    message_ = "Behavior was canceled";
+    setOutcomeAndMessage(Result::CANCELED, "Behavior was canceled");
     setState(CANCELED);
-  } else if (outcome_ == Result::SUCCESS) {
+  } else if (getOutcome() == Result::SUCCESS) {
     setState(RECOVERY_DONE);
   } else {
     setState(INTERNAL_ERROR);

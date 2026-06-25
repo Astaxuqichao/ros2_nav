@@ -1,0 +1,17 @@
+# Abstract text instruction to execute through Navflex.
+# Examples:
+#   go to 1.0 2.0 90deg
+#   去 1.0 2.0
+#   goto kitchen
+#   rotate 90deg
+#   原地旋转 -1.57rad
+#   forward 0.5m
+#   后退 0.3
+string instruction
+---
+bool success
+string command_type
+string normalized_command
+string message
+string[] steps
+builtin_interfaces/Duration elapsed_time

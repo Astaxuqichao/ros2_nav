@@ -4,6 +4,8 @@ navflex_controller_server:
     controller_frequency: 20.0
     controller_patience: 5.0
     controller_max_retries: -1
+    controller_stuck_timeout: 10.0
+    controller_stuck_distance: 2.0
     robot_frame: "base_link"
     map_frame: "map"
     verbose: false

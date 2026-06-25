@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -161,7 +162,7 @@ class ControllerExecution : public NavflexExecutionBase {
   // State
   mutable std::mutex state_mtx_;
   ControllerState state_;
-  bool moving_;
+  std::atomic<bool> moving_;
 
   // Timing
   mutable std::mutex lct_mtx_;

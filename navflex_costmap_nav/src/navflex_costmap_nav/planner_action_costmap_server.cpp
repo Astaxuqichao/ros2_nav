@@ -322,14 +322,14 @@ nav2_util::CallbackReturn PlannerCostmapServer::on_cleanup(
     const rclcpp_lifecycle::State& /*state*/) {
   RCLCPP_INFO(get_logger(), "Cleaning up Planner server");
 
+  action_executor_thread_.reset();
+  action_executor_.reset();
+
   // Break the circular reference: rclcpp_action server holds
   // NodeBaseInterface::SharedPtr back to this node, preventing destruction
   // unless we explicitly reset it here.
   action_server_get_path_ptr_.reset();
   planner_action_.reset();
-
-  action_executor_thread_.reset();
-  action_executor_.reset();
   tf_.reset();
 
   PlannerMap::iterator it;
@@ -407,7 +407,7 @@ nav2_util::CallbackReturn PlannerCostmapServer::on_shutdown(
  * 6. Return result to action client
  *
  * **Planner Selection:**
- * - If goal.planner is empty: uses first planner in map (undefined order)
+   * - If goal.planner is empty: uses the first configured loaded planner
  * - If goal.planner is specified: looks up by name in planners_ map
  * - Returns INTERNAL_ERROR if planner not found or no plugins loaded
  *
@@ -428,8 +428,7 @@ nav2_util::CallbackReturn PlannerCostmapServer::on_shutdown(
  *
  * **Implementation Notes:**
  * - Planner ptr null check prevents crashes from invalid plugin pointers
- * - First available planner is non-deterministic (unordered_map iteration)
- * - Consider adding default planner configuration for deterministic behavior
+   * - Empty planner_id selection follows planner_plugins configuration order
  */
 void PlannerCostmapServer::callActionGetPath(ServerGoalHandleGetPathPtr goal_handle) {
   const ActionToPose::Goal& goal = *goal_handle->get_goal();
@@ -448,13 +447,26 @@ void PlannerCostmapServer::callActionGetPath(ServerGoalHandleGetPathPtr goal_han
 
   // Pointer to the planner plugin that will be used for path generation
   nav2_core::GlobalPlanner::Ptr planner_ptr = nullptr;
+  std::string selected_planner_id;
 
-  // If no planner name is specified in the goal,
-  // fall back to the first available planner plugin.
-  // Note: unordered_map does not guarantee order; if deterministic behavior
-  // is required, a configured default planner should be used instead.
+  // If no planner name is specified in the goal, use the first configured
+  // planner ID that was loaded successfully. Do not depend on unordered_map
+  // iteration order.
   if (goal.planner_id.empty()) {
-    planner_ptr = planners_.begin()->second;
+    for (const auto& planner_id : planner_ids_) {
+      auto it = planners_.find(planner_id);
+      if (it != planners_.end() && it->second) {
+        selected_planner_id = it->first;
+        planner_ptr = it->second;
+        break;
+      }
+    }
+    if (!planner_ptr) {
+      RCLCPP_FATAL_STREAM(rclcpp::get_logger(name_action_get_path_),
+                          "Internal Error: No configured planner plugin is loaded");
+      goal_handle->abort(result);
+      return;
+    }
   } else {
     // Look up the planner plugin by the name provided in the goal
     auto it = planners_.find(goal.planner_id);
@@ -471,15 +483,17 @@ void PlannerCostmapServer::callActionGetPath(ServerGoalHandleGetPathPtr goal_han
     }
 
     // Use the requested planner plugin
+    selected_planner_id = it->first;
     planner_ptr = it->second;
   }
 
-  RCLCPP_DEBUG_STREAM(
-      rclcpp::get_logger(name_action_get_path_),
-      "Start action \"get_path\" using planner \"" << goal.planner_id << "\"");
+  RCLCPP_INFO(get_logger(),
+              "[PlannerServer] calling planner plugin id=%s requested_id=%s",
+              selected_planner_id.c_str(),
+              goal.planner_id.empty() ? "<empty>" : goal.planner_id.c_str());
 
   navflex_costmap_nav::PlannerExecution::Ptr planner_execution =
-      newPlannerExecution(goal.planner_id, planner_ptr);
+      newPlannerExecution(selected_planner_id, planner_ptr);
 
   // start another planning action
   planner_action_->start(goal_handle, planner_execution);

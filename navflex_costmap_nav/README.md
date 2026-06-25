@@ -84,6 +84,10 @@ ros2 action send_goal /follow_path nav2_msgs/action/FollowPath \
   "{path: {header: {frame_id: 'map'}, poses: []}, controller_id: '', goal_checker_id: ''}"
 ```
 
+FollowPath 控制层包含卡困检测：默认 `controller_stuck_timeout=60.0` 秒内机器人位移小于
+`controller_stuck_distance=0.5` 米时，action 以 `ROBOT_STUCK=106` abort，并在
+`message` 中输出实际位移、耗时和阈值。路径原地更新时会重置检测窗口。
+
 ### ComputePathToPose action（全局规划）
 
 ```bash

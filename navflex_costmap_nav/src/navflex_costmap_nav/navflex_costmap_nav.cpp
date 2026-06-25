@@ -4,6 +4,8 @@
 #include "nav2_costmap_2d/footprint_collision_checker.hpp"
 #include "tf2/utils.h"
 
+#include <vector>
+
 namespace navflex_costmap_nav
 {
 
@@ -214,8 +216,6 @@ void CostmapNavNode::checkPointCallback(
   using Res = nav2_msgs::srv::CheckPoint::Response;
 
   auto costmap_ros = selectCostmap(request->costmap);
-  auto * costmap = costmap_ros->getCostmap();
-  std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*(costmap->getMutex()));
 
   // Transform point into costmap frame
   geometry_msgs::msg::PointStamped pt_in = request->point;
@@ -230,6 +230,8 @@ void CostmapNavNode::checkPointCallback(
     return;
   }
 
+  auto * costmap = costmap_ros->getCostmap();
+  std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*(costmap->getMutex()));
   unsigned int mx, my;
   if (!costmap->worldToMap(pt_out.point.x, pt_out.point.y, mx, my)) {
     response->state = Res::OUTSIDE;
@@ -251,8 +253,6 @@ void CostmapNavNode::checkPoseCallback(
   using Res = nav2_msgs::srv::CheckPose::Response;
 
   auto costmap_ros = selectCostmap(request->costmap);
-  auto * costmap = costmap_ros->getCostmap();
-  std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*(costmap->getMutex()));
 
   // Resolve pose: either use current robot pose or the one in the request
   geometry_msgs::msg::PoseStamped pose_in;
@@ -287,6 +287,8 @@ void CostmapNavNode::checkPoseCallback(
   auto footprint = costmap_ros->getRobotFootprint();
   nav2_costmap_2d::padFootprint(footprint, request->safety_dist);
 
+  auto * costmap = costmap_ros->getCostmap();
+  std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*(costmap->getMutex()));
   // Use FootprintCollisionChecker to query cost at this pose
   nav2_costmap_2d::FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *> checker(costmap);
   double raw_cost = checker.footprintCostAtPose(x, y, yaw, footprint);
@@ -324,15 +326,18 @@ void CostmapNavNode::checkPathCallback(
   using Res = nav2_msgs::srv::CheckPath::Response;
 
   auto costmap_ros = selectCostmap(request->costmap);
-  auto * costmap = costmap_ros->getCostmap();
-  std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*(costmap->getMutex()));
-
-  nav2_costmap_2d::FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *> checker(costmap);
   auto footprint = costmap_ros->getRobotFootprint();
   nav2_costmap_2d::padFootprint(footprint, request->safety_dist);
 
+  struct PathPoseCheck {
+    uint32_t index;
+    geometry_msgs::msg::PoseStamped pose;
+  };
+
+  std::vector<PathPoseCheck> transformed_poses;
+  transformed_poses.reserve(request->path.poses.size());
+
   uint8_t  worst_state = Res::FREE;
-  uint32_t total_cost  = 0;
   uint32_t last_checked = 0;
 
   const auto & poses = request->path.poses;
@@ -344,16 +349,25 @@ void CostmapNavNode::checkPathCallback(
 
     last_checked = i;
 
-    // Transform pose to costmap frame
-    geometry_msgs::msg::PoseStamped pose_in = poses[i];
-    geometry_msgs::msg::PoseStamped pose_out;
     try {
-      pose_out = tf_listener_ptr_->transform(pose_in, costmap_ros->getGlobalFrameID(),
+      auto pose_out = tf_listener_ptr_->transform(
+        poses[i], costmap_ros->getGlobalFrameID(),
         tf2::durationFromSec(0.1));
+      transformed_poses.push_back({i, pose_out});
     } catch (const tf2::TransformException &) {
       worst_state = std::max(worst_state, static_cast<uint8_t>(Res::UNKNOWN));
       continue;
     }
+  }
+
+  auto * costmap = costmap_ros->getCostmap();
+  std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*(costmap->getMutex()));
+  nav2_costmap_2d::FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *> checker(costmap);
+
+  uint32_t total_cost  = 0;
+  for (const auto& transformed : transformed_poses) {
+    last_checked = transformed.index;
+    const auto& pose_out = transformed.pose;
 
     double x   = pose_out.pose.position.x;
     double y   = pose_out.pose.position.y;
