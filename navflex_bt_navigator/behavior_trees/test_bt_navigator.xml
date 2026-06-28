@@ -11,7 +11,7 @@
                     </Control>
                 </Decorator>
                 <Control ID="RecoveryNode" name="FollowPath" number_of_retries="1">
-                    <Action ID="NavflexExePathAction" angle_to_goal="{controller_angle_to_goal}" controller_id="FollowPath" dist_to_goal="{controller_dist_to_goal}" feedback_distance_to_goal="{controller_feedback_distance_to_goal}" feedback_message="{controller_feedback_message}" feedback_outcome="{controller_feedback_outcome}" feedback_speed="{controller_feedback_speed}" final_pose="{controller_final_pose}" goal_checker_id="general_goal_checker" message="{controller_message}" outcome="{controller_outcome}" path="{path}" server_name="follow_path" server_timeout="10.0"/>
+                    <Action ID="NavflexExePathAction" angle_to_goal="{controller_angle_to_goal}" controller_id="FollowPath" dist_to_goal="{controller_dist_to_goal}" feedback_distance_to_goal="{controller_feedback_distance_to_goal}" feedback_message="{controller_feedback_message}" feedback_outcome="{controller_feedback_outcome}" feedback_speed="{controller_feedback_speed}" final_pose="{controller_final_pose}" message="{controller_message}" outcome="{controller_outcome}" path="{path}" server_name="follow_path" server_timeout="10.0" xy_goal_tolerance="0.0" yaw_goal_tolerance="0.0"/>
                     <Action ID="ClearEntireCostmap" name="ClearLocalCostmap-Context" server_timeout="10.0" service_name="local_costmap/clear_entirely_local_costmap"/>
                 </Control>
             </Control>
@@ -122,17 +122,13 @@
         </Action>
         <Action ID="FollowPath">
             <input_port default="FollowPath" name="controller_id"/>
-            <input_port name="goal_checker_id">Goal checker</input_port>
+            <input_port name="xy_goal_tolerance">XY goal tolerance in meters. 0.0 uses controller defaults</input_port>
+            <input_port name="yaw_goal_tolerance">Yaw goal tolerance in radians. 0.0 uses controller defaults</input_port>
             <input_port name="path">Path to follow</input_port>
             <input_port name="server_name">Server name</input_port>
             <input_port name="server_timeout">Server timeout</input_port>
         </Action>
         <Condition ID="GlobalUpdatedGoal"/>
-        <Action ID="GoalCheckerSelector">
-            <input_port name="default_goal_checker">Default goal checker of the controller selector</input_port>
-            <output_port name="selected_goal_checker">Name of the selected goal checker received from the topic subcription</output_port>
-            <input_port name="topic_name">Name of the topic to receive goal checker selection commands</input_port>
-        </Action>
         <Condition ID="GoalReached">
             <input_port name="global_frame">Reference frame</input_port>
             <input_port name="goal">Destination</input_port>
@@ -306,8 +302,11 @@
             <output_port name="final_pose" type="geometry_msgs/PoseStamped">
         Final robot pose reported by the controller
       </output_port>
-            <input_port default="general_goal_checker" name="goal_checker_id" type="string">
-        Goal checker plugin ID
+            <input_port default="0.0" name="xy_goal_tolerance" type="float">
+        XY goal tolerance in meters. 0.0 uses controller defaults
+      </input_port>
+            <input_port default="0.0" name="yaw_goal_tolerance" type="float">
+        Yaw goal tolerance in radians. 0.0 uses controller defaults
       </input_port>
             <output_port name="message" type="string">
         Human-readable result description

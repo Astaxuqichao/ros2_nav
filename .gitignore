@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# ROS / colcon local outputs
+build/
+install/
+log/
+*.log
+*.bag
+*.db3
+*.sqlite3
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Generated diagnostics
+frames.pdf
+view_frames.*

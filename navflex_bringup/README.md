@@ -1,129 +1,365 @@
 # navflex_bringup
 
-`navflex_bringup` is the launch package for the Navflex navigation stack. It provides one launch file for the navigation stack itself and one launch file for local simulation.
+`navflex_bringup` 是 Navflex 导航栈的统一启动包，集中维护启动文件、地图、参数和 RViz 配置。它支持两类仿真：
 
-## Launch Files
+- 本地轻量仿真：`omni_fake_node` + `simulation_lidar`
+- TurtleBot3 Waffle Pi + OpenMANIPULATOR-X Gazebo 仿真
 
-### navflex_bringup_launch.py
+导航栈本身由 `navflex_costmap_nav`、`bt_navigator`、`velocity_smoother` 和 lifecycle manager 组成。
 
-Starts the Navflex navigation runtime:
+## 依赖
 
-- `navflex_costmap_nav`
-- `bt_navigator`
-- `lifecycle_manager_navflex`
-- optional `nav2_route` route server
+### 系统环境
 
-The lifecycle manager activates nodes in this order:
+- Ubuntu 22.04
+- ROS 2 Humble
+- Gazebo Classic 11
+- Nav2 Humble
+- BehaviorTree.CPP v3
 
-1. `navflex_costmap_nav`
-2. `route_server`, only when `use_route_server:=True`
-3. `bt_navigator`
-
-This ordering lets the action servers from `navflex_costmap_nav` become available before `bt_navigator` loads the behavior tree.
+常用系统依赖：
 
 ```bash
-ros2 launch navflex_bringup navflex_bringup_launch.py
+sudo apt update
+sudo apt install \
+  python3-colcon-common-extensions \
+  python3-rosdep \
+  python3-vcstool \
+  ros-humble-gazebo-ros-pkgs \
+  ros-humble-xacro \
+  ros-humble-robot-state-publisher \
+  ros-humble-controller-manager \
+  ros-humble-ros2-control \
+  ros-humble-ros2-controllers \
+  ros-humble-joint-state-broadcaster \
+  ros-humble-imu-sensor-broadcaster
 ```
 
-Common arguments:
+### 工作区源码依赖
 
-| Argument | Default | Description |
+当前工作区需要包含这些源码包：
+
+| 路径 | 作用 |
+| --- | --- |
+| `src/navflex` | Navflex 核心包、BT 节点、仿真节点和 bringup |
+| `src/navigation2` | 本项目使用的 Nav2 源码版本，包含改动后的 `nav2_msgs/action/FollowPath.action` |
+| `src/spatio_temporal_voxel_layer` | costmap 3D/点云障碍层 |
+| `src/turtlebot3` | TurtleBot3 基础包 |
+| `src/turtlebot3_manipulation` | TurtleBot3 机械臂相关包 |
+| `src/turtlebot3_simulations` | TurtleBot3 / TB3 manipulation Gazebo 仿真包 |
+| `src/turtlebot3_msgs` | TurtleBot3 消息包 |
+
+如果从新工作区准备依赖，建议使用 `rosdep` 补齐系统包：
+
+```bash
+cd <workspace>
+rosdep update
+rosdep install --from-paths src --ignore-src -r -y
+```
+
+## 编译
+
+因为 `FollowPath.action` 已扩展了 `xy_goal_tolerance` 和 `yaw_goal_tolerance`，修改 action 后需要重编依赖它的包。推荐直接编译整个工作区：
+
+```bash
+cd <workspace>
+colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+source install/setup.bash
+```
+
+仅调试 Navflex bringup 时，可选择性编译：
+
+```bash
+colcon build --packages-select \
+  nav2_msgs nav2_behavior_tree nav2_bt_navigator \
+  navflex_costmap_nav navflex_bt_nodes navflex_bt_navigator \
+  navflex_bringup omni_fake_node simulation_lidar
+source install/setup.bash
+```
+
+## 启动方式概览
+
+| 启动文件 | 作用 |
+| --- | --- |
+| `sim_local_launch.py` | 启动本地轻量仿真，不启动导航栈 |
+| `tb3_manipulation_sim_launch.py` | 启动 TB3 manipulation Gazebo 仿真，不启动 Navflex 导航栈 |
+| `navflex_bringup_launch.py` | 启动 Navflex 导航栈 |
+
+`navflex_bringup_launch.py` 默认：
+
+- `use_sim_time:=true`
+- `chassis_model:=omni`
+- `params_file` 为空时按 `chassis_model` 自动选择参数文件
+
+底盘参数选择：
+
+| `chassis_model` | 参数文件 | 适用对象 |
 | --- | --- | --- |
-| `use_sim_time` | `false` | Use simulation time. |
-| `params_file` | `navflex_bringup/params/nav2_params.yaml` | Parameters for `navflex_costmap_nav`. |
-| `bt_params_file` | `navflex_bt_navigator/params/navflex_bt_navigator.yaml` | Parameters for `bt_navigator`. |
-| `default_nav_to_pose_bt_xml` | `navflex_bt_navigator/behavior_trees/test_bt_navigator.xml` | Behavior tree XML used by NavigateToPose. |
-| `autostart` | `true` | Automatically configure and activate lifecycle nodes. |
-| `use_respawn` | `False` | Respawn `navflex_costmap_nav` if it exits. Only applies when `use_composition:=False`. |
-| `use_composition` | `False` | Load `navflex_costmap_nav`, `bt_navigator`, and `lifecycle_manager_navflex` into one component container. |
-| `container_name` | `navflex_container` | Component container name when `use_composition:=True`. |
-| `log_level` | `info` | ROS log level. |
-| `use_route_server` | `False` | Start `nav2_route` with the Navflex stack. |
-| `graph_filepath` | `nav2_route/graphs/sample_graph.geojson` | Route graph file used when `use_route_server:=True`. |
-| `namespace` | empty | Top-level namespace. |
+| `omni` | `params/nav2_params.yaml` | 全向底盘、本地 `omni_fake_node` |
+| `diff` | `params/nav2_params_tb3_diff.yaml` | 差速底盘、TurtleBot3 |
 
-Example with simulation time:
+## 本地轻量仿真
 
-```bash
-ros2 launch navflex_bringup navflex_bringup_launch.py use_sim_time:=true
-```
+本地仿真用于快速验证 Navflex，不依赖 Gazebo。它会启动：
 
-Example with composition:
-
-```bash
-ros2 launch navflex_bringup navflex_bringup_launch.py \
-  use_composition:=True \
-  container_name:=navflex_container
-```
-
-When composition is enabled, `navflex_costmap_nav`, `bt_navigator`, and
-`lifecycle_manager_navflex` run in the same container. The optional
-`route_server` remains a separate process.
-
-Example with route server:
-
-```bash
-ros2 launch navflex_bringup navflex_bringup_launch.py \
-  use_route_server:=True \
-  graph_filepath:=/path/to/graph.geojson
-```
-
-### sim_local_launch.py
-
-Starts a local simulation environment. It does not start the Navflex navigation stack.
-
-It launches:
-
-- RViz through `nav2_bringup`
+- RViz
 - `omni_fake_node`
 - `simulation_lidar`
 - `map_server`
 - `lifecycle_manager_map`
-- static transform `map -> odom`
+- 静态 TF：`map -> odom`
+
+启动仿真：
 
 ```bash
 ros2 launch navflex_bringup sim_local_launch.py
 ```
 
-Common arguments:
-
-| Argument | Default | Description |
-| --- | --- | --- |
-| `map_file` | `navflex_bringup/maps/map1.yaml` | Map loaded by `map_server`. |
-| `rviz_config_file` | `navflex_bringup/rviz/nav2_default_view.rviz` | RViz config file synced from `nav2_bringup`. |
-| `use_sim_time` | `true` | Use simulation time. |
-| `autostart` | `true` | Automatically configure and activate lifecycle nodes. |
-
-Use a custom map:
+另开终端启动导航栈：
 
 ```bash
-ros2 launch navflex_bringup sim_local_launch.py map_file:=/path/to/map.yaml
-```
-
-## Typical Workflow
-
-Build and source the workspace:
-
-```bash
-cd /home/robot/ros2/nav_ws
-colcon build --packages-select navflex_bringup
 source install/setup.bash
+ros2 launch navflex_bringup navflex_bringup_launch.py
 ```
 
-Start local simulation:
+常用参数：
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `map_file` | `maps/map1.yaml` | 地图文件 |
+| `rviz_config_file` | `rviz/nav2_default_view.rviz` | RViz 配置 |
+| `use_sim_time` | `true` | 使用仿真时间 |
+| `autostart` | `true` | 自动激活 `map_server` |
+
+本地轻量仿真没有 Gazebo，因此 `omni_fake_node` 会发布 `/clock`。如果 `use_sim_time:=true` 下 costmap 不更新，先检查：
 
 ```bash
-ros2 launch navflex_bringup sim_local_launch.py
+ros2 topic echo /clock
+ros2 topic hz /scan_cloud
+ros2 topic hz /local_costmap/costmap
+ros2 topic hz /global_costmap/costmap
 ```
 
-Start navigation in another terminal after map, TF, odometry, and sensor topics are available:
+## TB3 Manipulation Gazebo 仿真
+
+`tb3_manipulation_sim_launch.py` 启动 TurtleBot3 Waffle Pi + OpenMANIPULATOR-X Gazebo 仿真。TB3 是差速底盘，不是全向底盘，导航时应使用 `chassis_model:=diff`。
+
+### 1. 启动 Gazebo 仿真
+
+默认以无头模式启动 Gazebo server，并启动 RViz：
+
+```bash
+ros2 launch navflex_bringup tb3_manipulation_sim_launch.py
+```
+
+该启动文件会启动：
+
+- `gzserver`
+- `robot_state_publisher`
+- `spawn_entity.py`
+- `map_server`
+- `lifecycle_manager_map_server`
+- `odom_fake_localization.py`
+- RViz
+- ros2_control controller spawner
+
+默认 TF 链路：
+
+```text
+map -> odom -> base_footprint -> base_link
+```
+
+`odom_fake_localization.py` 会根据 Gazebo `/odom` 发布 `map -> odom`，用于无 AMCL 的仿真测试。RViz 的 `2D Pose Estimate` 可通过 `/initialpose` 重置仿真定位。
+
+### 2. 启动 Navflex 导航栈
+
+另开终端：
+
+```bash
+source install/setup.bash
+ros2 launch navflex_bringup navflex_bringup_launch.py chassis_model:=diff
+```
+
+因为 `use_sim_time` 默认已经是 `true`，通常不需要再显式传入。若要写清楚也可以：
+
+```bash
+ros2 launch navflex_bringup navflex_bringup_launch.py \
+  use_sim_time:=true \
+  chassis_model:=diff
+```
+
+### 3. 查看 Gazebo 可视化
+
+默认 `gui:=false`，也就是只启动 `gzserver`。有两种查看方式：
+
+启动时直接打开 Gazebo GUI：
+
+```bash
+ros2 launch navflex_bringup tb3_manipulation_sim_launch.py gui:=true
+```
+
+如果已经以无头模式启动，可另开终端连接到已有仿真：
+
+```bash
+gzclient
+```
+
+### 4. 常用参数
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `world` | `turtlebot3_home_service_challenge.world` | Gazebo world |
+| `map` | `maps/tb3_home_service_challenge.yaml` | map_server 加载的地图 |
+| `gui` | `false` | 是否启动 Gazebo GUI |
+| `rviz` | `true` | 是否启动 RViz |
+| `rviz_config` | `rviz/nav2_default_view.rviz` | RViz 配置 |
+| `spawn_controllers` | `true` | 是否启动 ros2_control controllers |
+| `use_sim_time` | `true` | 使用 Gazebo `/clock` |
+| `x_pose` / `y_pose` / `yaw` | `0.0` | 初始位姿 |
+
+TB3 差速参数摘要：
+
+| 参数 | 值 |
+| --- | --- |
+| 驱动类型 | Differential drive |
+| 轮距 | `0.287 m` |
+| 轮半径 | `0.033 m` |
+| 最大线速度 | `0.26 m/s` |
+| 最大角速度 | `1.82 rad/s` |
+| 导航半径 | `0.22 m` |
+
+## Navflex 导航栈
+
+启动：
 
 ```bash
 ros2 launch navflex_bringup navflex_bringup_launch.py
 ```
 
-## Notes
+常用参数：
 
-- `navflex_bringup` owns bringup-level launch files, maps, RViz config, and bringup parameters.
-- `sim_local_launch.py` was moved here from `navflex_costmap_nav` because it starts multiple packages and is not specific to the costmap navigation node.
-- If `bt_navigator` reports that `compute_path_to_pose` or `follow_path` is unavailable, verify that `navflex_costmap_nav` reached the active lifecycle state first.
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `use_sim_time` | `true` | 使用仿真时间 |
+| `chassis_model` | `omni` | `omni` 或 `diff` |
+| `params_file` | empty | 自定义参数文件；为空时按底盘模型选择 |
+| `bt_params_file` | `navflex_bt_navigator/params/navflex_bt_navigator.yaml` | BT Navigator 参数 |
+| `default_nav_to_pose_bt_xml` | `navflex_bt_navigator/behavior_trees/test_bt_navigator.xml` | 默认行为树 |
+| `autostart` | `true` | 自动激活 lifecycle 节点 |
+| `use_respawn` | `False` | 非 composition 模式下崩溃重启 `navflex_costmap_nav` |
+| `use_composition` | `False` | 使用组件容器启动核心节点 |
+| `container_name` | `navflex_container` | 组件容器名称 |
+| `log_level` | `info` | 日志等级 |
+| `use_route_server` | `False` | 是否启动 `nav2_route` |
+| `graph_filepath` | `nav2_route/graphs/sample_graph.geojson` | route graph 文件 |
+| `namespace` | empty | 顶层 namespace |
+
+启动后包含：
+
+- `navflex_costmap_nav`
+- `bt_navigator`
+- `velocity_smoother`
+- `lifecycle_manager_navflex`
+- 可选 `route_server`
+
+lifecycle 激活顺序：
+
+1. `navflex_costmap_nav`
+2. `route_server`，仅 `use_route_server:=True`
+3. `velocity_smoother`
+4. `bt_navigator`
+
+## 行为树和 FollowPath 容差
+
+Navflex 使用自定义 `NavflexExePathAction` 调用 `/follow_path`。`FollowPath.action` 支持：
+
+- `xy_goal_tolerance`
+- `yaw_goal_tolerance`
+
+如果这两个字段都为 `0.0`，`navflex_costmap_nav` 会使用参数文件中的：
+
+- `default_xy_goal_tolerance`
+- `default_yaw_goal_tolerance`
+
+控制器内部仍使用 `nav2_core::GoalChecker`。每个新的 FollowPath goal 会根据 action goal 的容差生成对应的 goal checker。同 controller、同 resolved 容差的新 path 会原地更新，不重启控制器；容差变化时才重建 goal checker 和 controller execution。
+
+## 常用检查命令
+
+检查节点：
+
+```bash
+ros2 node list
+ros2 lifecycle nodes
+```
+
+检查 TF：
+
+```bash
+ros2 run tf2_ros tf2_echo map base_link
+ros2 run tf2_ros tf2_echo odom base_link
+```
+
+检查地图、传感器和 costmap：
+
+```bash
+ros2 topic hz /map
+ros2 topic hz /scan
+ros2 topic hz /scan_cloud
+ros2 topic hz /local_costmap/costmap
+ros2 topic hz /global_costmap/costmap
+```
+
+检查仿真时间：
+
+```bash
+ros2 topic echo /clock
+ros2 param get /navflex_costmap_nav use_sim_time
+ros2 param get /bt_navigator use_sim_time
+```
+
+发送导航目标可直接在 RViz 使用 `2D Goal Pose`。
+
+## 常见问题
+
+### `use_sim_time:=true` 时 costmap 不更新
+
+先检查 `/clock` 是否存在：
+
+```bash
+ros2 topic echo /clock
+```
+
+本地轻量仿真由 `omni_fake_node` 发布 `/clock`；Gazebo 仿真由 Gazebo 发布 `/clock`。如果没有 `/clock`，ROS time 会停在 0，costmap、TF filter 和 BT timeout 都可能异常。
+
+### `bt_navigator` 找不到 action server
+
+确认 `navflex_costmap_nav` 已激活，并且 action server 存在：
+
+```bash
+ros2 lifecycle get /navflex_costmap_nav
+ros2 action list | grep -E 'compute_path_to_pose|follow_path|behavior_action'
+```
+
+### TB3 导航效果像全向机器人
+
+TB3 是差速底盘，启动导航时必须使用：
+
+```bash
+ros2 launch navflex_bringup navflex_bringup_launch.py chassis_model:=diff
+```
+
+`diff` 参数会将 MPPI motion model 设置为 `DiffDrive`，并禁用横向速度。
+
+### 已经无头启动 Gazebo，如何看画面
+
+另开终端执行：
+
+```bash
+gzclient
+```
+
+或者下次启动时使用：
+
+```bash
+ros2 launch navflex_bringup tb3_manipulation_sim_launch.py gui:=true
+```

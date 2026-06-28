@@ -11,13 +11,15 @@ from nav2_common.launch import RewrittenYaml
 
 
 def launch_setup(context, *args, **kwargs):
+    bringup_dir = get_package_share_directory('navflex_bringup')
     bt_dir = get_package_share_directory('navflex_bt_navigator')
     nav2_route_dir = get_package_share_directory('nav2_route')
 
     namespace = LaunchConfiguration('namespace')
     use_sim_time = LaunchConfiguration('use_sim_time')
     autostart = LaunchConfiguration('autostart')
-    params_file = LaunchConfiguration('params_file')
+    chassis_model = LaunchConfiguration('chassis_model')
+    params_file_arg = LaunchConfiguration('params_file')
     bt_params_file = LaunchConfiguration('bt_params_file')
     bt_xml = LaunchConfiguration('default_nav_to_pose_bt_xml')
     use_respawn = LaunchConfiguration('use_respawn')
@@ -28,6 +30,18 @@ def launch_setup(context, *args, **kwargs):
     use_route_server = LaunchConfiguration('use_route_server')
 
     with_route = use_route_server.perform(context).lower() in ('true', '1', 'yes')
+    selected_chassis = chassis_model.perform(context).lower()
+    params_file = params_file_arg.perform(context)
+
+    if not params_file:
+        if selected_chassis == 'omni':
+            params_file = os.path.join(bringup_dir, 'params', 'nav2_params.yaml')
+        elif selected_chassis == 'diff':
+            params_file = os.path.join(bringup_dir, 'params', 'nav2_params_tb3_diff.yaml')
+        else:
+            raise ValueError(
+                f'Unsupported chassis_model "{selected_chassis}". '
+                'Expected "omni" or "diff".')
 
     lifecycle_nodes = ['navflex_costmap_nav']
     if with_route:
@@ -57,7 +71,10 @@ def launch_setup(context, *args, **kwargs):
             output='screen',
             respawn=use_respawn,
             respawn_delay=2.0,
-            parameters=[configured_params],
+            parameters=[
+                {'use_sim_time': use_sim_time},
+                configured_params,
+            ],
             arguments=['--ros-args', '--log-level', log_level],
             remappings=remappings),
 
@@ -79,7 +96,10 @@ def launch_setup(context, *args, **kwargs):
                     package='navflex_costmap_nav',
                     plugin='navflex_costmap_nav::CostmapNavNode',
                     name='navflex_costmap_nav',
-                    parameters=[configured_params],
+                    parameters=[
+                        {'use_sim_time': use_sim_time},
+                        configured_params,
+                    ],
                     remappings=remappings),
                 ComposableNode(
                     package='nav2_bt_navigator',
@@ -185,7 +205,6 @@ def generate_launch_description():
     bt_dir = get_package_share_directory('navflex_bt_navigator')
     nav2_route_dir = get_package_share_directory('nav2_route')
 
-    default_params_file = os.path.join(bringup_dir, 'params', 'nav2_params.yaml')
     default_bt_params_file = os.path.join(bt_dir, 'params', 'navflex_bt_navigator.yaml')
     default_bt_xml = os.path.join(bt_dir, 'behavior_trees', 'test_bt_navigator.xml')
     default_graph = os.path.join(nav2_route_dir, 'graphs', 'sample_graph.geojson')
@@ -193,9 +212,11 @@ def generate_launch_description():
     return LaunchDescription([
         SetEnvironmentVariable('RCUTILS_LOGGING_BUFFERED_STREAM', '1'),
         DeclareLaunchArgument('namespace', default_value='', description='Top-level namespace'),
-        DeclareLaunchArgument('use_sim_time', default_value='false', description='Use simulation clock'),
-        DeclareLaunchArgument('params_file', default_value=default_params_file,
-                              description='Full path to the navflex_costmap_nav parameters file'),
+        DeclareLaunchArgument('use_sim_time', default_value='true', description='Use simulation clock'),
+        DeclareLaunchArgument('chassis_model', default_value='omni',
+                              description='Chassis model selecting navigation parameters: omni or diff'),
+        DeclareLaunchArgument('params_file', default_value='',
+                              description='Optional parameter file override. Empty selects by chassis_model'),
         DeclareLaunchArgument('bt_params_file', default_value=default_bt_params_file,
                               description='Full path to the bt_navigator parameters file'),
         DeclareLaunchArgument('default_nav_to_pose_bt_xml', default_value=default_bt_xml,

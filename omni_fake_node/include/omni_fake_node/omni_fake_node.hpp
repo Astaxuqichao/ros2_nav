@@ -7,6 +7,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "rosgraph_msgs/msg/clock.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 
@@ -24,6 +25,7 @@ private:
   // 发布者和订阅者
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
+  rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr clock_pub_;
 
   // TF 广播器
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
@@ -36,11 +38,13 @@ private:
   double vx_, vy_, wz_;            // 速度命令
   rclcpp::Time last_update_time_;
   rclcpp::Time last_cmd_vel_time_;  // 最后一次收到 cmd_vel 的时间
+  rclcpp::Time sim_time_;
   bool is_first_update_;
 
   // 参数
   double update_rate_;             // Hz
   double cmd_vel_timeout_;         // cmd_vel 超时时间 (s)
+  bool publish_clock_;
   std::string odom_frame_;
   std::string base_link_frame_;
 };

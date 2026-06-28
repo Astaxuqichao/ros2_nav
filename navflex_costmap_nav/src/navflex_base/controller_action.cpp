@@ -53,11 +53,14 @@ void ControllerAction::start(const GoalHandlePtr& goal_handle,
         const bool same_controller =
             slot_it->second.execution && execution_ptr &&
             (slot_it->second.execution->getName() == execution_ptr->getName());
-        const bool same_goal_checker =
-            active_handle->get_goal()->goal_checker_id ==
-            goal_handle->get_goal()->goal_checker_id;
+        const bool same_goal_tolerance =
+            slot_it->second.execution && execution_ptr &&
+            slot_it->second.execution->getXYGoalTolerance() ==
+                execution_ptr->getXYGoalTolerance() &&
+            slot_it->second.execution->getYawGoalTolerance() ==
+                execution_ptr->getYawGoalTolerance();
 
-        if (same_controller && same_goal_checker) {
+        if (same_controller && same_goal_tolerance) {
           RCLCPP_INFO(
               rclcpp::get_logger(name_),
               "[FollowPath] path update accepted: controller=%s poses=%zu",
@@ -87,13 +90,15 @@ void ControllerAction::start(const GoalHandlePtr& goal_handle,
         } else {
           RCLCPP_WARN(
               rclcpp::get_logger(name_),
-              "[ControllerAction] Preempt requires full restart in slot %d. same_controller=%s (running=%s, requested=%s), same_goal_checker=%s (running=%s, requested=%s)",
+              "[ControllerAction] Preempt requires full restart in slot %d. same_controller=%s (running=%s, requested=%s), same_goal_tolerance=%s (running=%.3f/%.3f, requested=%.3f/%.3f)",
               slot_id, same_controller ? "true" : "false",
               slot_it->second.execution ? slot_it->second.execution->getName().c_str() : "<null>",
               execution_ptr ? execution_ptr->getName().c_str() : "<null>",
-              same_goal_checker ? "true" : "false",
-              active_handle->get_goal()->goal_checker_id.c_str(),
-              goal_handle->get_goal()->goal_checker_id.c_str());
+              same_goal_tolerance ? "true" : "false",
+              slot_it->second.execution ? slot_it->second.execution->getXYGoalTolerance() : 0.0,
+              slot_it->second.execution ? slot_it->second.execution->getYawGoalTolerance() : 0.0,
+              execution_ptr ? execution_ptr->getXYGoalTolerance() : 0.0,
+              execution_ptr ? execution_ptr->getYawGoalTolerance() : 0.0);
         }
       }
     }

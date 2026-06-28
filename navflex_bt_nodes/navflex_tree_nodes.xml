@@ -96,10 +96,15 @@
                   default="FollowPath">
         Controller plugin ID (must match a key in controller_plugins)
       </input_port>
-      <input_port name="goal_checker_id"
-                  type="string"
-                  default="general_goal_checker">
-        Goal checker plugin ID
+      <input_port name="xy_goal_tolerance"
+                  type="float"
+                  default="0.0">
+        XY goal tolerance in meters. 0.0 uses controller defaults
+      </input_port>
+      <input_port name="yaw_goal_tolerance"
+                  type="float"
+                  default="0.0">
+        Yaw goal tolerance in radians. 0.0 uses controller defaults
       </input_port>
       <!-- ── BtActionNode base ports ── -->
       <input_port name="server_name"

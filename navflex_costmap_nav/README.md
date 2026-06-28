@@ -81,7 +81,7 @@ ros2 action send_goal /behavior_action nav2_msgs/action/DummyBehavior \
 
 ```bash
 ros2 action send_goal /follow_path nav2_msgs/action/FollowPath \
-  "{path: {header: {frame_id: 'map'}, poses: []}, controller_id: '', goal_checker_id: ''}"
+  "{path: {header: {frame_id: 'map'}, poses: []}, controller_id: '', xy_goal_tolerance: 0.0, yaw_goal_tolerance: 0.0}"
 ```
 
 FollowPath 控制层包含卡困检测：默认 `controller_stuck_timeout=60.0` 秒内机器人位移小于

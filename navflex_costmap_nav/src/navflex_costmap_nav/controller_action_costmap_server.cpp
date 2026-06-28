@@ -3,14 +3,81 @@
 
 #include "navflex_costmap_nav/controller_action_costmap_server.hpp"
 
+#include <cmath>
+#include <limits>
+
+#include "angles/angles.h"
 #include "nav2_util/node_utils.hpp"
 #include "nav2_core/exceptions.hpp"
+#include "nav2_util/geometry_utils.hpp"
+#include "tf2/utils.h"
 
 using std::placeholders::_1;
 using std::placeholders::_2;
 using std::placeholders::_3;
 
 namespace navflex_costmap_nav {
+
+namespace {
+
+class ActionGoalChecker : public nav2_core::GoalChecker {
+ public:
+  ActionGoalChecker(double xy_goal_tolerance, double yaw_goal_tolerance)
+      : xy_goal_tolerance_(xy_goal_tolerance),
+        yaw_goal_tolerance_(yaw_goal_tolerance),
+        xy_goal_tolerance_sq_(xy_goal_tolerance * xy_goal_tolerance) {}
+
+  void initialize(
+      const rclcpp_lifecycle::LifecycleNode::WeakPtr&,
+      const std::string&,
+      const std::shared_ptr<nav2_costmap_2d::Costmap2DROS>) override {}
+
+  void reset() override {}
+
+  bool isGoalReached(
+      const geometry_msgs::msg::Pose& query_pose,
+      const geometry_msgs::msg::Pose& goal_pose,
+      const geometry_msgs::msg::Twist&) override {
+    const double dx = query_pose.position.x - goal_pose.position.x;
+    const double dy = query_pose.position.y - goal_pose.position.y;
+    if (dx * dx + dy * dy > xy_goal_tolerance_sq_) {
+      return false;
+    }
+
+    const double dyaw = angles::shortest_angular_distance(
+        tf2::getYaw(query_pose.orientation),
+        tf2::getYaw(goal_pose.orientation));
+    return std::fabs(dyaw) <= yaw_goal_tolerance_;
+  }
+
+  bool getTolerances(
+      geometry_msgs::msg::Pose& pose_tolerance,
+      geometry_msgs::msg::Twist& vel_tolerance) override {
+    const double invalid_field = std::numeric_limits<double>::lowest();
+
+    pose_tolerance.position.x = xy_goal_tolerance_;
+    pose_tolerance.position.y = xy_goal_tolerance_;
+    pose_tolerance.position.z = invalid_field;
+    pose_tolerance.orientation =
+        nav2_util::geometry_utils::orientationAroundZAxis(yaw_goal_tolerance_);
+
+    vel_tolerance.linear.x = invalid_field;
+    vel_tolerance.linear.y = invalid_field;
+    vel_tolerance.linear.z = invalid_field;
+    vel_tolerance.angular.x = invalid_field;
+    vel_tolerance.angular.y = invalid_field;
+    vel_tolerance.angular.z = invalid_field;
+
+    return true;
+  }
+
+ private:
+  double xy_goal_tolerance_;
+  double yaw_goal_tolerance_;
+  double xy_goal_tolerance_sq_;
+};
+
+}  // namespace
 
 ControllerCostmapServer::ControllerCostmapServer(
     std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros,
@@ -22,9 +89,6 @@ ControllerCostmapServer::ControllerCostmapServer(
               {"--ros-args", "-r",
                std::string("navflex_controller_server") + ":" +
                    std::string("__node:=navflex_controller_server")})),
-      goal_checker_loader_("nav2_core", "nav2_core::GoalChecker"),
-      default_goal_checker_ids_{"goal_checker"},
-      default_goal_checker_types_{"nav2_controller::SimpleGoalChecker"},
       lp_loader_("nav2_core", "nav2_core::Controller"),
       default_ids_{"FollowPath"},
       default_types_{"dwb_core::DWBLocalPlanner"},
@@ -35,8 +99,9 @@ ControllerCostmapServer::ControllerCostmapServer(
               name_action_follow_path_.c_str());
 
   declare_parameter("controller_frequency", 20.0);
-  declare_parameter("goal_checker_plugins", default_goal_checker_ids_);
   declare_parameter("controller_plugins", default_ids_);
+  declare_parameter("default_xy_goal_tolerance", 0.25);
+  declare_parameter("default_yaw_goal_tolerance", 0.25);
   declare_parameter("speed_limit_topic", rclcpp::ParameterValue(std::string("speed_limit")));
   declare_parameter("cmd_vel_topic", rclcpp::ParameterValue(std::string("cmd_vel_nav")));
 }
@@ -45,7 +110,6 @@ ControllerCostmapServer::~ControllerCostmapServer() {
   if (controller_action_) {
     controller_action_->cancelAll();
   }
-  goal_checkers_.clear();
   controllers_.clear();
 }
 
@@ -53,38 +117,6 @@ nav2_util::CallbackReturn ControllerCostmapServer::on_configure(
     const rclcpp_lifecycle::State& /*state*/) {
   RCLCPP_INFO(get_logger(), "[ControllerServer] configuring");
   auto node = shared_from_this();
-
-  // --- Goal checkers ---
-  get_parameter("goal_checker_plugins", goal_checker_ids_);
-  if (goal_checker_ids_ == default_goal_checker_ids_) {
-    for (size_t i = 0; i < default_goal_checker_ids_.size(); ++i) {
-      nav2_util::declare_parameter_if_not_declared(
-          node, default_goal_checker_ids_[i] + ".plugin",
-          rclcpp::ParameterValue(default_goal_checker_types_[i]));
-    }
-  }
-  goal_checker_ids_concat_.clear();
-  goal_checker_types_.resize(goal_checker_ids_.size());
-  for (size_t i = 0; i < goal_checker_ids_.size(); i++) {
-    try {
-      goal_checker_types_[i] =
-          nav2_util::get_plugin_type_param(node, goal_checker_ids_[i]);
-      nav2_core::GoalChecker::Ptr gc =
-          goal_checker_loader_.createUniqueInstance(goal_checker_types_[i]);
-      RCLCPP_INFO(get_logger(), "[ControllerServer] loaded goal_checker id=%s type=%s",
-                  goal_checker_ids_[i].c_str(), goal_checker_types_[i].c_str());
-      gc->initialize(node, goal_checker_ids_[i], costmap_ros_);
-      goal_checkers_.insert({goal_checker_ids_[i], gc});
-    } catch (const pluginlib::PluginlibException& ex) {
-      RCLCPP_FATAL(get_logger(), "Failed to create goal_checker: %s", ex.what());
-      return nav2_util::CallbackReturn::FAILURE;
-    }
-  }
-  for (const auto& id : goal_checker_ids_) {
-    goal_checker_ids_concat_ += id + " ";
-  }
-  RCLCPP_INFO(get_logger(), "[ControllerServer] goal_checkers=[%s]",
-              goal_checker_ids_concat_.c_str());
 
   // --- Controllers ---
   get_parameter("controller_plugins", controller_ids_);
@@ -206,7 +238,6 @@ nav2_util::CallbackReturn ControllerCostmapServer::on_cleanup(
     ctrl->cleanup();
   }
   controllers_.clear();
-  goal_checkers_.clear();
   vel_publisher_.reset();
   current_goal_publisher_.reset();
   speed_limit_sub_.reset();
@@ -230,15 +261,15 @@ rclcpp_action::GoalResponse ControllerCostmapServer::handleGoalFollowPath(
     const auto& end = poses.back().pose.position;
     RCLCPP_DEBUG(
         get_logger(),
-        "Received FollowPath goal: controller_id='%s', goal_checker_id='%s', frame='%s', poses=%zu, start=(%.3f, %.3f), end=(%.3f, %.3f)",
-        goal->controller_id.c_str(), goal->goal_checker_id.c_str(),
+        "Received FollowPath goal: controller_id='%s', frame='%s', poses=%zu, start=(%.3f, %.3f), end=(%.3f, %.3f), tolerance=(%.3f, %.3f)",
+        goal->controller_id.c_str(),
         goal->path.header.frame_id.c_str(), poses.size(), start.x, start.y,
-        end.x, end.y);
+        end.x, end.y, goal->xy_goal_tolerance, goal->yaw_goal_tolerance);
   } else {
     RCLCPP_WARN(
         get_logger(),
-        "Received FollowPath goal with empty path: controller_id='%s', goal_checker_id='%s', frame='%s'",
-        goal->controller_id.c_str(), goal->goal_checker_id.c_str(),
+        "Received FollowPath goal with empty path: controller_id='%s', frame='%s'",
+        goal->controller_id.c_str(),
         goal->path.header.frame_id.c_str());
   }
   return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
@@ -266,16 +297,6 @@ void ControllerCostmapServer::callActionFollowPath(
     auto result = std::make_shared<ActionFollowPath::Result>();
     RCLCPP_ERROR(get_logger(), "Requested controller '%s' not found.",
                  goal->controller_id.c_str());
-    goal_handle->abort(result);
-    return;
-  }
-
-  // Resolve goal checker plugin
-  std::string goal_checker_id;
-  if (!findGoalCheckerId(goal->goal_checker_id, goal_checker_id)) {
-    auto result = std::make_shared<ActionFollowPath::Result>();
-    RCLCPP_ERROR(get_logger(), "Requested goal checker '%s' not found.",
-                 goal->goal_checker_id.c_str());
     goal_handle->abort(result);
     return;
   }
@@ -320,17 +341,34 @@ void ControllerCostmapServer::callActionFollowPath(
 
   const auto& start = normalized_path.poses.front().pose.position;
   const auto& end = normalized_path.poses.back().pose.position;
+  double default_xy_goal_tolerance = 0.25;
+  double default_yaw_goal_tolerance = 0.25;
+  get_parameter("default_xy_goal_tolerance", default_xy_goal_tolerance);
+  get_parameter("default_yaw_goal_tolerance", default_yaw_goal_tolerance);
+
+  const bool use_default_goal_tolerance =
+      goal->xy_goal_tolerance == 0.0f && goal->yaw_goal_tolerance == 0.0f;
+  const double xy_goal_tolerance = use_default_goal_tolerance ?
+      default_xy_goal_tolerance : goal->xy_goal_tolerance;
+  const double yaw_goal_tolerance = use_default_goal_tolerance ?
+      default_yaw_goal_tolerance : goal->yaw_goal_tolerance;
+
   RCLCPP_INFO(
       get_logger(),
-      "[FollowPath] calling controller plugin id=%s goal_checker plugin id=%s "
-      "poses=%zu frame=%s start=(%.2f, %.2f) goal=(%.2f, %.2f)",
-      controller_id.c_str(), goal_checker_id.c_str(),
+      "[FollowPath] calling controller plugin id=%s poses=%zu frame=%s "
+      "start=(%.2f, %.2f) goal=(%.2f, %.2f) tolerance=(%.3f, %.3f)%s",
+      controller_id.c_str(),
       normalized_path.poses.size(), normalized_path.header.frame_id.c_str(),
-      start.x, start.y, end.x, end.y);
+      start.x, start.y, end.x, end.y,
+      xy_goal_tolerance, yaw_goal_tolerance,
+      use_default_goal_tolerance ? " from defaults" : " from action goal");
 
   // Create execution object and start
+  auto goal_checker = std::make_shared<ActionGoalChecker>(
+      xy_goal_tolerance, yaw_goal_tolerance);
   ControllerExecution::Ptr execution =
-      newControllerExecution(controller_id, goal_checker_id);
+      newControllerExecution(
+          controller_id, goal_checker, xy_goal_tolerance, yaw_goal_tolerance);
   execution->setNewPlan(normalized_path);
 
   controller_action_->start(goal_handle, execution);
@@ -356,34 +394,18 @@ bool ControllerCostmapServer::findControllerId(const std::string& requested,
   return false;
 }
 
-bool ControllerCostmapServer::findGoalCheckerId(const std::string& requested,
-                                          std::string& resolved) const {
-  if (goal_checkers_.find(requested) != goal_checkers_.end()) {
-    resolved = requested;
-    return true;
-  }
-  if (requested.empty() && goal_checkers_.size() == 1) {
-    RCLCPP_WARN_ONCE(get_logger(),
-                     "No goal_checker_id in goal; using the only loaded "
-                     "goal checker: %s",
-                     goal_checker_ids_concat_.c_str());
-    resolved = goal_checkers_.begin()->first;
-    return true;
-  }
-  RCLCPP_ERROR(get_logger(),
-               "GoalChecker '%s' not found. Available: %s",
-               requested.c_str(), goal_checker_ids_concat_.c_str());
-  return false;
-}
-
 ControllerExecution::Ptr ControllerCostmapServer::newControllerExecution(
     const std::string& controller_id,
-    const std::string& goal_checker_id) {
+    const nav2_core::GoalChecker::Ptr& goal_checker,
+    double xy_goal_tolerance,
+    double yaw_goal_tolerance) {
   auto node = shared_from_this();
   return std::make_shared<ControllerExecution>(
       controller_id,
       controllers_.at(controller_id),
-      goal_checkers_.at(goal_checker_id).get(),
+      goal_checker,
+      xy_goal_tolerance,
+      yaw_goal_tolerance,
       robot_info_,
       node,
       vel_publisher_,

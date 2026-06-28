@@ -1,284 +1,132 @@
 # navflex
 
-基于 ROS 2 Humble 的导航扩展功能包集合，在 Nav2 框架之上提供全向机器人仿真、地图仿真激光雷达、自定义代价地图导航服务端、BT 节点及辅助工具。
+Navflex 是基于 ROS 2 Humble 和 Nav2 的导航扩展包集合。它把 costmap、规划、控制、BT 行为树、自定义恢复行为、本地仿真和 TB3 manipulation Gazebo 仿真整理成一套可直接启动的导航工作区。
 
-## 包结构
+更详细的启动参数和排查命令见 [navflex_bringup/README.md](navflex_bringup/README.md)。
 
-| 包名 | 说明 |
-|------|------|
-| `navflex_bringup` | 整合启动包，提供本地仿真启动、完整导航栈启动，并集中管理地图、参数和 RViz 配置 |
-| `navflex_costmap_nav` | 核心导航服务端，封装 Nav2 Planner/Controller/Behavior action server，提供完整的代价地图导航能力 |
-| `navflex_bt_navigator` | BT Navigator 启动封装与 Navflex 行为树 XML |
-| `navflex_bt_nodes` | 自定义 BehaviorTree 节点（GetPath、ExePath、Recovery），供 BT Navigator 调用；ExePath 支持运行中接收重规划路径更新 |
-| `navflex_cmdbehavior` | Nav2 恢复行为插件，实现 `nav2_core::Behavior` 接口 |
-| `navflex_exclusion_zone` | Nav2 costmap 电子禁区层插件，通过话题动态接收多边形禁区并标记为 lethal obstacle |
-| `navflex_instruction_server` | 文本指令、语义任务和 VLN/VLM 桥接入口，将自然语言/结构化任务安全转换为 Navflex 导航能力 |
-| `navflex_utility` | 公共工具库，提供 `RobotInformation`、`OdometryHelper`、路径/导航异常类型等 |
-| `omni_fake_node` | 全向轮虚拟机器人节点，支持 vx/vy/wz 速度指令，用于无实体硬件时的 Nav2 仿真测试 |
-| `simulation_lidar` | 基于 `OccupancyGrid` 地图的 2D 仿真激光雷达，发布 `LaserScan` 与 `PointCloud2`，支持噪声、射线投射、未知区域障碍 |
-| `rcl_logging_spdlog_rotating` | ROS 2 自定义日志后端，使用 spdlog 异步滚动写入替换默认日志实现 |
+## 包功能
 
-## navflex_costmap_nav 核心设计
+| 包名 | 功能 |
+| --- | --- |
+| `navflex_bringup` | 统一启动包，维护 launch、地图、参数、RViz 配置；提供本地仿真、TB3 manipulation Gazebo 仿真和 Navflex 导航栈启动入口 |
+| `navflex_costmap_nav` | 核心导航服务端；在一个 lifecycle 节点内管理 global/local costmap，并提供 `/compute_path_to_pose`、`/follow_path`、`/behavior_action` |
+| `navflex_bt_navigator` | BT Navigator 封装包，提供 Navflex 默认行为树 XML 和 BT Navigator 参数 |
+| `navflex_bt_nodes` | 自定义 BT 节点，包括 GetPath、ExePath、Recovery；`NavflexExePathAction` 支持运行中路径更新和 FollowPath 容差传递 |
+| `navflex_cmdbehavior` | Nav2 behavior 插件，提供 `rotate`、`linear`、`wait` 等简单恢复/动作命令 |
+| `navflex_exclusion_zone` | Nav2 costmap 电子禁区层插件，可通过话题动态标记禁行区域 |
+| `navflex_instruction_server` | 文本指令、语义地图、任务服务和 VLN/VLM 桥接入口 |
+| `navflex_utility` | 公共工具库，提供机器人状态、TF/odom 查询和导航辅助函数 |
+| `omni_fake_node` | 本地全向虚拟机器人，订阅 `/cmd_vel`，发布 `/odom`、TF 和本地仿真 `/clock` |
+| `simulation_lidar` | 基于 OccupancyGrid 地图射线投射的 2D 仿真激光雷达，发布 `/scan` 和 `/scan_cloud` |
+| `rcl_logging_spdlog_rotating` | 自定义 ROS 2 spdlog 滚动日志后端 |
 
-`navflex_costmap_nav` 是 Navflex 导航栈的核心运行时。它不是简单地分别启动 Nav2 的 `planner_server`、`controller_server`、`behavior_server`，而是在一个 lifecycle 节点 `CostmapNavNode` 内统一组织 costmap、规划、控制和行为执行。
-
-### 单 lifecycle 入口
-
-`CostmapNavNode` 继承 `nav2_util::LifecycleNode`，作为整个导航服务端的生命周期入口：
-
-- `configure`：创建 global/local costmap，加载 Planner、Controller、Behavior 插件，创建 action server
-- `activate`：激活 costmap、插件和 action server publisher
-- `deactivate`：取消正在执行的 action，停止发布控制输出
-- `cleanup`：释放 action server、executor、插件和 costmap 资源
-
-在 bringup 中，`lifecycle_manager_navflex` 只需要管理 `navflex_costmap_nav` 与 `bt_navigator`，并保证 `navflex_costmap_nav` 先于 `bt_navigator` 激活。
-
-### 三类 action server
-
-`navflex_costmap_nav` 对外提供三个核心 action server，供 BT 节点或脚本调用：
-
-| Action server | 动作类型 | 作用 |
-|---------------|----------|------|
-| `/compute_path_to_pose` | `nav2_msgs/action/ComputePathToPose` | 调用 `nav2_core::GlobalPlanner` 生成全局路径 |
-| `/follow_path` | `nav2_msgs/action/FollowPath` | 调用 `nav2_core::Controller` 跟踪路径并发布速度 |
-| `/behavior_action` | `nav2_msgs/action/DummyBehavior` | 调用 `nav2_core::Behavior` 执行恢复/行为命令 |
-
-对应实现分为 `PlannerCostmapServer`、`ControllerCostmapServer`、`BehaviorCostmapServer`，底层统一复用 `NavflexActionBase` 与各自的 `Execution` 类。
-
-### 共享 costmap 与插件体系
-
-`CostmapNavNode` 内部创建并维护：
-
-- `global_costmap`：供全局规划和全局路径检查使用
-- `local_costmap`：供控制器和局部恢复行为使用
-- Planner 插件：如 `nav2_navfn_planner/NavfnPlanner`
-- Controller 插件：如 `nav2_mppi_controller::MPPIController`
-- Behavior 插件：如 `navflex_cmdbehavior/CmdBehavior`
-
-参数、地图和 RViz 配置集中放在 `navflex_bringup`，`navflex_costmap_nav` 专注于运行时导航服务端本身。
-
-### 独立 action executor
-
-每个 server 的 action execute 回调使用独立 callback group 和独立 executor 线程处理，避免长时间运行的规划、控制或行为执行阻塞 goal/cancel 服务响应。这一点对 FollowPath 和恢复行为尤其重要，否则 action client 可能出现 goal response timeout 或 cancel 不及时。
-
-### FollowPath 原地路径更新
-
-`ControllerAction` 支持同 controller、同 goal checker 的新 FollowPath goal 做原地 plan update：
-
-- BT 中 `RateController` 周期重规划，更新 blackboard 的 `{path}`
-- `NavflexExePathAction` 运行中检测 `{path}` 变化并重新发送 FollowPath goal
-- `ControllerAction` 判断 controller 与 goal checker 未变化时，不重启控制线程，而是调用 `ControllerExecution::setNewPlan()`
-- `ControllerExecution` 在控制循环中接收新 plan，并让控制器继续沿最新路径运行
-
-这个机制用于支持导航过程中动态重规划、避障路径更新和新目标路径切换。
-
-## 依赖
+## 主要依赖
 
 - ROS 2 Humble
-- Nav2（`nav2_bringup`、`nav2_core`、`nav2_behavior_tree` 等）: 主要扩展nav2_core以及nav2_msgs
-- `tf2`、`tf2_ros`、`sensor_msgs`、`nav_msgs`、`geometry_msgs`
+- Nav2 源码包 `navigation2`
+- `spatio_temporal_voxel_layer`
+- TurtleBot3 / TurtleBot3 Manipulation / TurtleBot3 Simulations
+- Gazebo Classic 11
+- `ros2_control`、`controller_manager`、`xacro`
 
-### 依赖：navflex 与 navigation2
-
-克隆本仓库及所有依赖：
+从新环境准备依赖时，建议在工作区根目录执行：
 
 ```bash
-cd ~/humble_ws/navflex_ws
-git clone https://github.com/Astaxuqichao/navflex.git -b main
-git clone https://github.com/Astaxuqichao/navigation2.git -b humble
-git clone https://github.com/SteveMacenski/spatio_temporal_voxel_layer.git -b humble
+rosdep update
+rosdep install --from-paths src --ignore-src -r -y
 ```
 
 ## 编译
 
 ```bash
-cd ~/humble_ws/navflex_ws
+cd <workspace>
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 source install/setup.bash
 ```
 
-## 启动方式
+如果改过 `src/navigation2/nav2_msgs/action/FollowPath.action`，需要重编依赖该 action 的包，至少包括：
 
-### 1. sim_local_launch.py — 仿真本地启动
+```bash
+colcon build --packages-select \
+  nav2_msgs nav2_behavior_tree nav2_bt_navigator \
+  navflex_costmap_nav navflex_bt_nodes navflex_bt_navigator \
+  navflex_bringup
+source install/setup.bash
+```
 
-用于本地仿真测试。启动 `omni_fake_node`（仿真底盘）、`simulation_lidar`、RViz、地图服务器及静态 TF，不启动导航栈。
+## 本地全向仿真快速启动
+
+终端 1，启动本地仿真环境：
 
 ```bash
 ros2 launch navflex_bringup sim_local_launch.py
 ```
 
-可选参数：
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `map_file` | `navflex_bringup/maps/map1.yaml` | 地图文件路径 |
-| `rviz_config_file` | `navflex_bringup/rviz/nav2_default_view.rviz` | RViz 配置文件路径 |
-| `use_sim_time` | `true` | 是否使用仿真时钟 |
-| `autostart` | `true` | 是否自动激活 `map_server` |
-
-示例（指定地图）：
-```bash
-ros2 launch navflex_bringup sim_local_launch.py \
-  map_file:=/path/to/your/map.yaml
-```
-
----
-
-### 2. navflex_bringup_launch.py — 完整导航启动
-
-启动完整导航栈：`costmap_nav_node`（规划/控制/行为服务器）+ `bt_navigator` + `lifecycle_manager_navflex`，通过 `navflex_bringup/params/nav2_params.yaml` 和 BT 参数文件配置各插件。
+终端 2，启动 Navflex 导航栈：
 
 ```bash
+source install/setup.bash
 ros2 launch navflex_bringup navflex_bringup_launch.py
 ```
 
-可选参数：
+默认导航参数为 `chassis_model:=omni`，适配 `omni_fake_node`。
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `params_file` | `navflex_bringup/params/nav2_params.yaml` | 参数文件路径 |
-| `bt_params_file` | `navflex_bt_navigator/params/navflex_bt_navigator.yaml` | `bt_navigator` 参数文件路径 |
-| `default_nav_to_pose_bt_xml` | `navflex_bt_navigator/behavior_trees/test_bt_navigator.xml` | NavigateToPose 使用的行为树 XML |
-| `use_sim_time` | `false` | 是否使用仿真时钟 |
-| `autostart` | `true` | 是否自动激活生命周期节点 |
-| `log_level` | `info` | 日志级别（debug/info/warn/error） |
-| `use_respawn` | `False` | 节点崩溃后是否自动重启，仅 `use_composition:=False` 时对 `navflex_costmap_nav` 生效 |
-| `use_composition` | `False` | 是否将 `navflex_costmap_nav`、`bt_navigator`、`lifecycle_manager_navflex` 加载到同一个组件容器 |
-| `container_name` | `navflex_container` | `use_composition:=True` 时使用的组件容器名称 |
-| `namespace` | `` | 命名空间 |
-| `use_route_server` | `False` | 是否同时启动 nav2_route 路网服务器 |
-| `graph_filepath` | `nav2_route/graphs/sample_graph.geojson` | 路网图文件路径 |
+## TB3 Manipulation 移动操作仿真
 
-示例（启用路网服务器，使用仿真时钟）：
-```bash
-ros2 launch navflex_bringup navflex_bringup_launch.py \
-  use_route_server:=True \
-  graph_filepath:=/path/to/your_graph.geojson \
-  use_sim_time:=true
-```
+TB3 manipulation 是差速底盘，不是全向底盘。启动导航时必须使用 `chassis_model:=diff`。
 
-示例（compose 方式启动核心导航节点）：
-```bash
-ros2 launch navflex_bringup navflex_bringup_launch.py \
-  use_composition:=True \
-  container_name:=navflex_container
-```
-
-启用 `use_composition:=True` 后，`navflex_costmap_nav`、`bt_navigator`、
-`lifecycle_manager_navflex` 会运行在同一个 container 中；可选的
-`route_server` 仍按独立进程启动。
-
-#### 生命周期节点管理
-
-- 默认管理 `navflex_costmap_nav` 与 `bt_navigator`
-- 激活顺序为 `navflex_costmap_nav` -> `route_server`（可选）-> `bt_navigator`
-- 启用 `use_route_server:=True` 时，`route_server` 会加入**同一个** `lifecycle_manager_navflex` 统一管理
-
-#### 行为树路径更新
-
-- 默认行为树位于 `navflex_bt_navigator/behavior_trees/test_bt_navigator.xml`
-- `RateController` 会周期性重新规划并更新 blackboard 中的 `{path}`
-- `NavflexExePathAction` 在 FollowPath 运行中检测 `{path}`、`controller_id`、`goal_checker_id` 变化，并重新发送 FollowPath goal
-- `navflex_costmap_nav` 的 controller action server 对同 controller、同 goal checker 的新 FollowPath goal 执行原地 plan update，避免完整重启控制器
-
----
-
-## 快速启动
-
-### 第一步：启动本地仿真环境
-
-启动全向虚拟机器人（`omni_fake_node`）、仿真激光雷达（`simulation_lidar`）、地图服务器及 RViz：
+终端 1，启动 TB3 manipulation Gazebo 仿真：
 
 ```bash
-ros2 launch navflex_bringup sim_local_launch.py
+ros2 launch navflex_bringup tb3_manipulation_sim_launch.py
 ```
 
-### 第二步：启动导航栈
+默认是无头 Gazebo server，并启动 RViz。需要 Gazebo GUI 时有两种方式：
 
 ```bash
-ros2 launch navflex_bringup navflex_bringup_launch.py use_sim_time:=true
+ros2 launch navflex_bringup tb3_manipulation_sim_launch.py gui:=true
 ```
 
-
-在 RViz 中使用 **2D Goal Pose** 工具发布目标点，默认将直接使用 `bt_navigator` 的 NavigateToPose action，由 `navflex_bt_navigator` 的行为树完成规划、控制和恢复逻辑。
-
-## AI / VLN 语义任务入口
-
-`navflex_instruction_server` 在基础导航栈之上提供三层面向 AI/VLN 的入口：
-
-- `navflex_semantic_map_server.py`：维护语义地标/区域，提供 `/navflex_semantic_map/query_target`、`/update_landmark`、`/list_landmarks`
-- `navflex_task_server.py`：接收结构化任务或自然语言任务，先做 schema 校验和语义 grounding，再调用 `/navflex_instruction/execute`
-- `navflex_vln_bridge.py`：接收外部 VLM/VLN/LLM 输出，归一化为 Navflex task schema，再转给任务层，避免模型直接控制底盘
-
-启动完整 AI/VLN 任务栈：
+或者在无头仿真已经启动后，另开终端连接：
 
 ```bash
-ros2 launch navflex_instruction_server task_stack.launch.py
+gzclient
 ```
 
-默认会加载包内示例语义地图 `params/semantic_landmarks.yaml`，其中包含
-`charging_station` / `充电桩`、`kitchen` / `厨房` 和 `corridor` / `走廊`。
-也可以替换成自己的语义地图：
-
-```bash
-ros2 launch navflex_instruction_server task_stack.launch.py \
-  semantic_params_file:=/path/to/semantic_landmarks.yaml
-```
-
-### 最小体验流程
-
-先编译并启动任务栈：
-
-```bash
-colcon build --packages-select navflex_instruction_server
-source install/setup.bash
-ros2 launch navflex_instruction_server task_stack.launch.py
-```
-
-另开一个终端，查询示例语义目标：
+终端 2，启动 Navflex 导航栈并选择 TB3 差速参数：
 
 ```bash
 source install/setup.bash
-ros2 service call /navflex_semantic_map/query_target \
-  navflex_instruction_server/srv/QuerySemanticTarget \
-  "{query: '充电桩'}"
+ros2 launch navflex_bringup navflex_bringup_launch.py chassis_model:=diff
 ```
 
-体验自然语言任务 dry-run，不会触发真实导航执行：
+启动后可在 RViz 使用 `2D Goal Pose` 发送导航目标。
+
+常用检查：
 
 ```bash
-ros2 service call /navflex_task/execute \
-  navflex_instruction_server/srv/ExecuteTask \
-  "{instruction: '去充电桩', execute: false, dry_run: true}"
+ros2 topic echo /clock
+ros2 run tf2_ros tf2_echo map base_link
+ros2 topic hz /local_costmap/costmap
+ros2 topic hz /global_costmap/costmap
 ```
 
-体验 VLN/VLM 桥接 dry-run：
+## FollowPath 到点容差
 
-```bash
-ros2 service call /navflex_vln/interpret \
-  navflex_instruction_server/srv/InterpretVln \
-  "{instruction: '带我去充电桩', model_output_json: '{\"action\":\"semantic_navigate\",\"target\":\"charging_station\"}', execute: false, dry_run: true}"
-```
+Navflex 扩展了 `nav2_msgs/action/FollowPath`：
 
-结构化任务 schema 示例：
+- `xy_goal_tolerance`
+- `yaw_goal_tolerance`
 
-```json
-{
-  "action": "semantic_navigate",
-  "target": "charging_station",
-  "target_type": "charger",
-  "constraints": ["avoid_crowd"],
-  "confirmation_required": false
-}
-```
+两个值都为 `0.0` 时，`navflex_costmap_nav` 使用参数文件中的默认到点精度。控制器内部仍通过 `nav2_core::GoalChecker` 判断是否到点；每个新的 FollowPath goal 会按 action 容差生成对应的 goal checker。
 
-真正执行任务时，将 `execute` 设为 `true`，并确保 `navflex_costmap_nav`、
-`bt_navigator` 等底层导航服务已经启动。
+## 文档入口
+
+- Bringup、依赖、TB3 仿真和排查：[navflex_bringup/README.md](navflex_bringup/README.md)
+- 核心导航服务端：[navflex_costmap_nav/README.md](navflex_costmap_nav/README.md)
+- 文本/语义任务入口：[navflex_instruction_server/README.md](navflex_instruction_server/README.md)
+- 本地全向假机器人：[omni_fake_node/README.md](omni_fake_node/README.md)
 
 ## License
 
-本仓库采用 `Apache-2.0` 许可证。
-
-- 允许使用、修改、分发和商业使用
-- 需保留许可证和版权声明
-- 完整条款见仓库根目录 [LICENSE](./LICENSE)
+Apache-2.0

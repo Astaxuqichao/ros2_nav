@@ -16,6 +16,7 @@ def generate_launch_description():
         DeclareLaunchArgument('size',             default_value='400'),
         DeclareLaunchArgument('rate',             default_value='10.0'),
         DeclareLaunchArgument('noise',            default_value='0.02'),
+        DeclareLaunchArgument('use_sim_time',     default_value='true'),
         DeclareLaunchArgument('use_topic_odom',   default_value='false'),
         DeclareLaunchArgument('odom_topic',       default_value='/odom'),
 
@@ -35,6 +36,7 @@ def generate_launch_description():
                 'size':            LaunchConfiguration('size'),
                 'rate':            LaunchConfiguration('rate'),
                 'noise':           LaunchConfiguration('noise'),
+                'use_sim_time':    LaunchConfiguration('use_sim_time'),
                 'use_topic_odom':  LaunchConfiguration('use_topic_odom'),
                 'odom_topic':      LaunchConfiguration('odom_topic'),
             }],

@@ -124,7 +124,6 @@ class SimpleNavClient(Node):
         follow_goal = FollowPath.Goal()
         follow_goal.path = path
         follow_goal.controller_id = 'FollowPath'
-        follow_goal.goal_checker_id = 'general_goal_checker'
 
         send_goal_future = self.follower_client.send_goal_async(follow_goal)
         send_goal_future.add_done_callback(

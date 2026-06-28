@@ -10,7 +10,9 @@ using ActionFollowPath = nav2_msgs::action::FollowPath;
 ControllerExecution::ControllerExecution(
     const std::string& name,
     const nav2_core::Controller::Ptr& controller_ptr,
-    nav2_core::GoalChecker* goal_checker,
+    const nav2_core::GoalChecker::Ptr& goal_checker,
+    double xy_goal_tolerance,
+    double yaw_goal_tolerance,
     const navflex_utility::RobotInformation::ConstPtr& robot_info,
     const rclcpp_lifecycle::LifecycleNode::SharedPtr& node,
     const rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr& vel_pub,
@@ -25,6 +27,8 @@ ControllerExecution::ControllerExecution(
       moving_(false),
       patience_(0, 0),
       max_retries_(-1),
+      xy_goal_tolerance_(xy_goal_tolerance),
+      yaw_goal_tolerance_(yaw_goal_tolerance),
       frequency_(DEFAULT_CONTROLLER_FREQUENCY),
       node_handle_(node) {
   if (!node_handle_->has_parameter("controller_frequency")) {
@@ -128,7 +132,7 @@ uint32_t ControllerExecution::computeVelocityCmd(const geometry_msgs::msg::PoseS
 {
   try {
     return controller_->computeVelocityCommands(
-        robot_pose, robot_velocity.twist, vel_cmd, goal_checker_, message);
+        robot_pose, robot_velocity.twist, vel_cmd, goal_checker_.get(), message);
   } catch (const std::exception& e) {
     message = e.what();
     RCLCPP_ERROR(node_handle_->get_logger(),
@@ -289,9 +293,6 @@ void ControllerExecution::run() {
                     name_.c_str());
       }
       controller_->setPlan(path);
-      if (goal_checker_) {
-        goal_checker_->reset();
-      }
       if (current_goal_pub_) {
         current_goal_pub_->publish(path.poses.back());
       }
@@ -320,27 +321,19 @@ void ControllerExecution::run() {
       return;
     }
 
-    // Check goal reached
-    if (goal_checker_) {
-      geometry_msgs::msg::TwistStamped vel_stamped;
-      robot_info_->getRobotVelocity(vel_stamped);
-      const auto & gp = path.poses.back().pose.position;
-      const auto & rp = robot_pose_.pose.position;
-      const double dist_to_goal =
-        std::hypot(gp.x - rp.x, gp.y - rp.y);
-      RCLCPP_DEBUG_THROTTLE(
-        node_handle_->get_logger(), *node_handle_->get_clock(), 1000,
-        "[ControllerExecution] goal dist=%.3f for %s", dist_to_goal,
-        name_.c_str());
-      if (goal_checker_->isGoalReached(
-              robot_pose_.pose, path.poses.back().pose, vel_stamped.twist)) {
-        RCLCPP_INFO(node_handle_->get_logger(), "[ControllerExecution] Goal reached for %s", name_.c_str());
-        publishZeroVelocity();
-        setState(ARRIVED_GOAL);
-        moving_.store(false);
-        condition_.notify_all();
-        break;
-      }
+    geometry_msgs::msg::TwistStamped robot_velocity;
+    robot_info_->getRobotVelocity(robot_velocity);
+
+    // Check goal reached through the per-action GoalChecker.
+    if (goal_checker_ &&
+        goal_checker_->isGoalReached(
+            robot_pose_.pose, path.poses.back().pose, robot_velocity.twist)) {
+      RCLCPP_INFO(node_handle_->get_logger(), "[ControllerExecution] Goal reached for %s", name_.c_str());
+      publishZeroVelocity();
+      setState(ARRIVED_GOAL);
+      moving_.store(false);
+      condition_.notify_all();
+      break;
     }
 
     setState(PLANNING);
@@ -353,9 +346,6 @@ void ControllerExecution::run() {
     }
 
     // Compute velocity through outcome/message interface.
-    geometry_msgs::msg::TwistStamped robot_velocity;
-    robot_info_->getRobotVelocity(robot_velocity);
-
     geometry_msgs::msg::TwistStamped cmd_vel_stamped;
     std::string compute_message;
     const uint32_t outcome = computeVelocityCmd(

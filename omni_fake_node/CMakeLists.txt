@@ -15,6 +15,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(rosgraph_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 
@@ -31,6 +32,7 @@ ament_target_dependencies(omni_fake_node
   rclcpp
   geometry_msgs
   nav_msgs
+  rosgraph_msgs
   tf2_ros
   tf2_geometry_msgs
 )
@@ -43,15 +45,6 @@ install(TARGETS omni_fake_node
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
 )
-
-install(DIRECTORY maps
-  DESTINATION share/${PROJECT_NAME}
-)
-
-install(DIRECTORY rviz
-  DESTINATION share/${PROJECT_NAME}
-)
-
 
 # 测试
 if(BUILD_TESTING)

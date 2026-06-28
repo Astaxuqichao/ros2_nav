@@ -39,8 +39,6 @@ class ControllerCostmapServer : public nav2_util::LifecycleNode {
  public:
   using ControllerMap =
       std::unordered_map<std::string, nav2_core::Controller::Ptr>;
-  using GoalCheckerMap =
-      std::unordered_map<std::string, nav2_core::GoalChecker::Ptr>;
 
   using ActionFollowPath = nav2_msgs::action::FollowPath;
   using ServerGoalHandleFollowPath =
@@ -87,12 +85,12 @@ class ControllerCostmapServer : public nav2_util::LifecycleNode {
   // -------- helpers --------
   bool findControllerId(const std::string& requested,
                         std::string& resolved) const;
-  bool findGoalCheckerId(const std::string& requested,
-                         std::string& resolved) const;
 
   ControllerExecution::Ptr newControllerExecution(
       const std::string& controller_id,
-      const std::string& goal_checker_id);
+      const nav2_core::GoalChecker::Ptr& goal_checker,
+      double xy_goal_tolerance,
+      double yaw_goal_tolerance);
 
   void speedLimitCallback(const nav2_msgs::msg::SpeedLimit::SharedPtr msg);
   void publishZeroVelocity();
@@ -101,14 +99,6 @@ class ControllerCostmapServer : public nav2_util::LifecycleNode {
       std::vector<rclcpp::Parameter> parameters);
 
   // -------- plugins --------
-  pluginlib::ClassLoader<nav2_core::GoalChecker> goal_checker_loader_;
-  std::vector<std::string> default_goal_checker_ids_;
-  std::vector<std::string> default_goal_checker_types_;
-  std::vector<std::string> goal_checker_ids_;
-  std::vector<std::string> goal_checker_types_;
-  std::string goal_checker_ids_concat_;
-  GoalCheckerMap goal_checkers_;
-
   pluginlib::ClassLoader<nav2_core::Controller> lp_loader_;
   std::vector<std::string> default_ids_;
   std::vector<std::string> default_types_;

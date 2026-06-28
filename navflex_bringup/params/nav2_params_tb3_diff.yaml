@@ -5,7 +5,7 @@ navflex_controller_server:
     controller_patience: 5.0
     controller_max_retries: -1
     controller_stuck_timeout: 60.0
-    controller_stuck_distance: 0.1
+    controller_stuck_distance: 0.05
     cmd_vel_topic: "cmd_vel_nav"
     robot_frame: "base_link"
     map_frame: "map"
@@ -15,7 +15,7 @@ navflex_controller_server:
     min_theta_velocity_threshold: 0.001
     failure_tolerance: 0.3
     default_xy_goal_tolerance: 0.05
-    default_yaw_goal_tolerance: 0.05
+    default_yaw_goal_tolerance: 0.1
     controller_plugins: ["FollowPath"]
 
     # DWB parameters
@@ -69,22 +69,22 @@ navflex_controller_server:
       model_dt: 0.05
       batch_size: 2000
       vx_std: 0.2
-      vy_std: 0.2
+      vy_std: 0.0
       wz_std: 0.4
-      vx_max: 1.0 #0.5
-      vx_min: -0.2 #-0.35
-      vy_max: 0.5
-      wz_max: 1.9
-      ax_max: 2.0
-      ay_max: 2.0
-      ax_min: -2.0
-      az_max: 2.0
+      vx_max: 0.26
+      vx_min: -0.10
+      vy_max: 0.0
+      wz_max: 1.82
+      ax_max: 1.0
+      ay_max: 0.0
+      ax_min: -1.0
+      az_max: 4.0
       iteration_count: 1
       prune_distance: 2.0   #1.7
       transform_tolerance: 0.1
       temperature: 0.3
       gamma: 0.015 #0.015
-      motion_model: "Omni"
+      motion_model: "DiffDrive"
       visualize_all_sampled_traj: false
       visualize_optimized_traj: true
       TrajectoryVisualizer:
@@ -173,7 +173,7 @@ local_costmap:
       width: 10
       height: 10
       resolution: 0.05
-      robot_radius: 0.22
+      robot_radius: 0.18
       plugins: ["rgbd_obstacle_layer", "exclusion_zone", "inflation_layer"]
       exclusion_zone:
         plugin: "navflex_exclusion_zone::ExclusionZoneLayer"
@@ -244,7 +244,7 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       use_sim_time: True
-      robot_radius: 0.22
+      robot_radius: 0.18
       resolution: 0.05
       track_unknown_space: true
       plugins: ["static_layer", "rgbd_obstacle_layer", "exclusion_zone", "inflation_layer"]
@@ -452,10 +452,10 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
-    max_velocity: [0.8, 0.5, 1.0]
-    min_velocity: [-0.8, -0.5, -1.0]
-    max_accel: [2.5, 2.5, 3.2]
-    max_decel: [-2.5, -2.5, -3.2]
+    max_velocity: [0.26, 0.0, 1.82]
+    min_velocity: [-0.10, 0.0, -1.82]
+    max_accel: [1.0, 0.0, 4.0]
+    max_decel: [-1.0, 0.0, -4.0]
     odom_topic: "odom"
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]

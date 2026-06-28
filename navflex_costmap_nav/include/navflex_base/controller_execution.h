@@ -57,7 +57,9 @@ class ControllerExecution : public NavflexExecutionBase {
    * @brief Constructor
    * @param name Plugin name (used for logging and parameter namespacing)
    * @param controller_ptr Pointer to the loaded controller plugin
-   * @param goal_checker Raw (non-owning) pointer to the goal checker
+   * @param goal_checker Goal checker generated for this FollowPath action goal
+   * @param xy_goal_tolerance Resolved position tolerance for this action goal
+   * @param yaw_goal_tolerance Resolved yaw tolerance for this action goal
    * @param robot_info Robot state provider
    * @param node Lifecycle node for parameter access and logging
    * @param vel_pub Publisher for velocity commands (geometry_msgs::Twist)
@@ -66,7 +68,9 @@ class ControllerExecution : public NavflexExecutionBase {
   ControllerExecution(
       const std::string& name,
       const nav2_core::Controller::Ptr& controller_ptr,
-      nav2_core::GoalChecker* goal_checker,
+      const nav2_core::GoalChecker::Ptr& goal_checker,
+      double xy_goal_tolerance,
+      double yaw_goal_tolerance,
       const navflex_utility::RobotInformation::ConstPtr& robot_info,
       const rclcpp_lifecycle::LifecycleNode::SharedPtr& node,
       const rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr& vel_pub,
@@ -98,6 +102,12 @@ class ControllerExecution : public NavflexExecutionBase {
    * @brief Return the configured loop frequency (Hz)
    */
   double getFrequency() const { return frequency_; }
+
+  /**
+   * @brief Return the resolved goal tolerances used by this execution.
+   */
+  double getXYGoalTolerance() const { return xy_goal_tolerance_; }
+  double getYawGoalTolerance() const { return yaw_goal_tolerance_; }
 
   /**
    * @brief Set a new plan for the controller.
@@ -146,9 +156,7 @@ class ControllerExecution : public NavflexExecutionBase {
 
   // Plugin
   nav2_core::Controller::Ptr controller_;
-
-  // Non-owning plugin references (owned by ControllerServer)
-  nav2_core::GoalChecker* goal_checker_;
+  nav2_core::GoalChecker::Ptr goal_checker_;
 
   // Publishers
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr vel_pub_;
@@ -182,6 +190,8 @@ class ControllerExecution : public NavflexExecutionBase {
   double frequency_;
   rclcpp::Duration patience_;
   int max_retries_;
+  double xy_goal_tolerance_;
+  double yaw_goal_tolerance_;
 
   std::string robot_frame_;
   std::string global_frame_;

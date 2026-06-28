@@ -63,7 +63,8 @@ namespace navflex_bt_nodes
  *   <NavflexExePathAction
  *       path="{path}"
  *       controller_id="FollowPath"
- *       goal_checker_id="general_goal_checker"
+ *       xy_goal_tolerance="0.0"
+ *       yaw_goal_tolerance="0.0"
  *       outcome="{controller_outcome}"
  *       message="{controller_message}"/>
  * @endcode
@@ -96,8 +97,12 @@ public:
       "path", "Global path to follow"));
     ports.insert(BT::InputPort<std::string>(
       "controller_id", "FollowPath", "Controller plugin ID"));
-    ports.insert(BT::InputPort<std::string>(
-      "goal_checker_id", "general_goal_checker", "Goal checker plugin ID"));
+    ports.insert(BT::InputPort<float>(
+      "xy_goal_tolerance", 0.0f,
+      "XY goal tolerance in meters. 0.0 uses controller defaults"));
+    ports.insert(BT::InputPort<float>(
+      "yaw_goal_tolerance", 0.0f,
+      "Yaw goal tolerance in radians. 0.0 uses controller defaults"));
 
     // ── Outputs ───────────────────────────────────────────────────────
     ports.insert(BT::OutputPort<uint32_t>(

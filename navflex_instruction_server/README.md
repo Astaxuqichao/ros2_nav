@@ -276,7 +276,8 @@ ros2 launch navflex_instruction_server instruction_web.launch.py \
 - `global_frame`，默认 `map`
 - `planner_id`，默认 `GridBased`
 - `controller_id`，默认 `FollowPath`
-- `goal_checker_id`，默认 `general_goal_checker`
+- `xy_goal_tolerance`，默认 `0.0`，表示使用 controller 默认到点距离精度
+- `yaw_goal_tolerance`，默认 `0.0`，表示使用 controller 默认到点角度精度
 - `behavior_id`，默认 `cmd_behavior`
 - `action_timeout`，默认 `60.0`
 - `feedback_publish_period`，默认 `0.5`，实时 feedback 发布节流周期，单位秒

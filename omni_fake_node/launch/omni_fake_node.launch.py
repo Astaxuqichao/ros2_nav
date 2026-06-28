@@ -15,6 +15,7 @@ def generate_launch_description():
         parameters=[
             {'update_rate': 50.0},
             {'cmd_vel_timeout': 0.5},
+            {'publish_clock': True},
             {'odom_frame': 'odom'},
             {'base_link_frame': 'base_link'},
         ]

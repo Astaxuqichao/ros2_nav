@@ -127,7 +127,6 @@ class RouteNavClient(Node):
         follow_goal = FollowPath.Goal()
         follow_goal.path = path
         follow_goal.controller_id = 'FollowPath'
-        follow_goal.goal_checker_id = 'general_goal_checker'
 
         future = self._follow_client.send_goal_async(follow_goal)
         future.add_done_callback(self._on_follow_accepted)

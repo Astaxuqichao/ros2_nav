@@ -63,7 +63,8 @@ class NavflexInstructionServer(Node):
         self.declare_parameter('global_frame', 'map')
         self.declare_parameter('planner_id', 'GridBased')
         self.declare_parameter('controller_id', 'FollowPath')
-        self.declare_parameter('goal_checker_id', 'general_goal_checker')
+        self.declare_parameter('xy_goal_tolerance', 0.0)
+        self.declare_parameter('yaw_goal_tolerance', 0.0)
         self.declare_parameter('behavior_id', 'cmd_behavior')
         self.declare_parameter('action_timeout', 60.0)
         self.declare_parameter('feedback_publish_period', 0.5)
@@ -77,7 +78,10 @@ class NavflexInstructionServer(Node):
         self.global_frame = self.get_parameter('global_frame').value
         self.planner_id = self.get_parameter('planner_id').value
         self.controller_id = self.get_parameter('controller_id').value
-        self.goal_checker_id = self.get_parameter('goal_checker_id').value
+        self.xy_goal_tolerance = float(
+            self.get_parameter('xy_goal_tolerance').value)
+        self.yaw_goal_tolerance = float(
+            self.get_parameter('yaw_goal_tolerance').value)
         self.behavior_id = self.get_parameter('behavior_id').value
         self.action_timeout = float(self.get_parameter('action_timeout').value)
         self.feedback_publish_period = float(
@@ -110,7 +114,8 @@ class NavflexInstructionServer(Node):
         self.get_logger().info(
             "Navflex instruction server ready. "
             f"planner_id='{self.planner_id}' controller_id='{self.controller_id}' "
-            f"goal_checker_id='{self.goal_checker_id}' behavior_id='{self.behavior_id}' "
+            f"goal_tolerance=({self.xy_goal_tolerance:.3f}, {self.yaw_goal_tolerance:.3f}) "
+            f"behavior_id='{self.behavior_id}' "
             f"feedback_publish_period={self.feedback_publish_period:.2f}s "
             f"named_locations={len(self.named_locations)}")
 
@@ -287,14 +292,17 @@ class NavflexInstructionServer(Node):
         follow_goal = FollowPath.Goal()
         follow_goal.path = path
         follow_goal.controller_id = self.controller_id
-        follow_goal.goal_checker_id = self.goal_checker_id
+        follow_goal.xy_goal_tolerance = self.xy_goal_tolerance
+        follow_goal.yaw_goal_tolerance = self.yaw_goal_tolerance
 
         self.get_logger().info(
             f"Calling follow action: controller_id='{self.controller_id}' "
-            f"goal_checker_id='{self.goal_checker_id}' poses={len(path.poses)}")
+            f"goal_tolerance=({self.xy_goal_tolerance:.3f}, "
+            f"{self.yaw_goal_tolerance:.3f}) poses={len(path.poses)}")
         steps.append(
             f"calling controller plugin: controller_id='{self.controller_id}', "
-            f"goal_checker_id='{self.goal_checker_id}', poses={len(path.poses)}")
+            f"goal_tolerance=({self.xy_goal_tolerance:.3f}, "
+            f"{self.yaw_goal_tolerance:.3f}), poses={len(path.poses)}")
         follow_result = self._send_goal_and_wait(self.follow_client, follow_goal, 'follow_path')
         if follow_result is None:
             steps.append(

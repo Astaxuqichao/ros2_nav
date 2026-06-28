@@ -35,7 +35,8 @@ void ExePathAction::on_tick()
 {
   getInput("path",           goal_.path);
   getInput("controller_id",  goal_.controller_id);
-  getInput("goal_checker_id", goal_.goal_checker_id);
+  getInput("xy_goal_tolerance", goal_.xy_goal_tolerance);
+  getInput("yaw_goal_tolerance", goal_.yaw_goal_tolerance);
 }
 
 void ExePathAction::on_wait_for_result(
@@ -57,11 +58,19 @@ void ExePathAction::on_wait_for_result(
     goal_updated_ = true;
   }
 
-  std::string new_goal_checker_id;
-  getInput("goal_checker_id", new_goal_checker_id);
+  float new_xy_goal_tolerance = 0.0f;
+  getInput("xy_goal_tolerance", new_xy_goal_tolerance);
 
-  if (goal_.goal_checker_id != new_goal_checker_id) {
-    goal_.goal_checker_id = new_goal_checker_id;
+  if (goal_.xy_goal_tolerance != new_xy_goal_tolerance) {
+    goal_.xy_goal_tolerance = new_xy_goal_tolerance;
+    goal_updated_ = true;
+  }
+
+  float new_yaw_goal_tolerance = 0.0f;
+  getInput("yaw_goal_tolerance", new_yaw_goal_tolerance);
+
+  if (goal_.yaw_goal_tolerance != new_yaw_goal_tolerance) {
+    goal_.yaw_goal_tolerance = new_yaw_goal_tolerance;
     goal_updated_ = true;
   }
 

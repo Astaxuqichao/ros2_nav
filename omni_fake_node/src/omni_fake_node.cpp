@@ -9,12 +9,14 @@ OmniFakeNode::OmniFakeNode(const rclcpp::NodeOptions & options)
   // 声明参数
   declare_parameter<double>("update_rate", 50.0);  // Hz
   declare_parameter<double>("cmd_vel_timeout", 0.5);  // 秒
+  declare_parameter<bool>("publish_clock", true);
   declare_parameter<std::string>("odom_frame", "odom");
   declare_parameter<std::string>("base_link_frame", "base_link");
 
   // 获取参数
   update_rate_ = get_parameter("update_rate").as_double();
   cmd_vel_timeout_ = get_parameter("cmd_vel_timeout").as_double();
+  publish_clock_ = get_parameter("publish_clock").as_bool();
   odom_frame_ = get_parameter("odom_frame").as_string();
   base_link_frame_ = get_parameter("base_link_frame").as_string();
 
@@ -30,6 +32,9 @@ OmniFakeNode::OmniFakeNode(const rclcpp::NodeOptions & options)
     "/odom",
     10
   );
+  if (publish_clock_) {
+    clock_pub_ = create_publisher<rosgraph_msgs::msg::Clock>("/clock", 10);
+  }
 
   // 创建 TF 广播器
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(this);
@@ -41,13 +46,15 @@ OmniFakeNode::OmniFakeNode(const rclcpp::NodeOptions & options)
     std::bind(&OmniFakeNode::timer_callback, this)
   );
 
-  last_update_time_ = now();
-  last_cmd_vel_time_ = now();
+  sim_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  last_update_time_ = sim_time_;
+  last_cmd_vel_time_ = sim_time_;
 
   RCLCPP_INFO(
     get_logger(),
-    "OmniFakeNode started with update_rate=%.1f Hz, cmd_vel_timeout=%.1f s, odom_frame='%s', base_link_frame='%s'",
-    update_rate_, cmd_vel_timeout_, odom_frame_.c_str(), base_link_frame_.c_str()
+    "OmniFakeNode started with update_rate=%.1f Hz, cmd_vel_timeout=%.1f s, publish_clock=%s, odom_frame='%s', base_link_frame='%s'",
+    update_rate_, cmd_vel_timeout_, publish_clock_ ? "true" : "false",
+    odom_frame_.c_str(), base_link_frame_.c_str()
   );
 }
 
@@ -60,12 +67,20 @@ void OmniFakeNode::cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr m
   vx_ = msg->linear.x;
   vy_ = msg->linear.y;
   wz_ = msg->angular.z;
-  last_cmd_vel_time_ = now();
+  last_cmd_vel_time_ = sim_time_;
 }
 
 void OmniFakeNode::timer_callback()
 {
-  rclcpp::Time current_time = now();
+  const double step = 1.0 / update_rate_;
+  sim_time_ = sim_time_ + rclcpp::Duration::from_seconds(step);
+  rclcpp::Time current_time = sim_time_;
+
+  if (clock_pub_) {
+    rosgraph_msgs::msg::Clock clock_msg;
+    clock_msg.clock = current_time;
+    clock_pub_->publish(clock_msg);
+  }
 
   // 检查 cmd_vel 是否超时
   rclcpp::Duration time_since_cmd = current_time - last_cmd_vel_time_;

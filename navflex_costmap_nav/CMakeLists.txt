@@ -99,8 +99,6 @@ install(TARGETS navflex_costmap_nav
   RUNTIME DESTINATION bin
 )
 
-install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
-
 # 安装头文件
 install(DIRECTORY include/
   DESTINATION include
