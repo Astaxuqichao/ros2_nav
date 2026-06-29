@@ -5,6 +5,7 @@ from launch import LaunchDescription
 from launch.actions import (
     AppendEnvironmentVariable,
     DeclareLaunchArgument,
+    ExecuteProcess,
     IncludeLaunchDescription,
     LogInfo,
     RegisterEventHandler,
@@ -49,7 +50,6 @@ def generate_launch_description():
         ' fake_sensor_commands:=false',
     ])
 
-    gzserver_launch = os.path.join(gazebo_ros_dir, 'launch', 'gzserver.launch.py')
     gzclient_launch = os.path.join(gazebo_ros_dir, 'launch', 'gzclient.launch.py')
 
     robot_state_publisher = Node(
@@ -61,12 +61,16 @@ def generate_launch_description():
         }],
         output='screen')
 
-    gzserver = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(gzserver_launch),
-        launch_arguments={
-            'verbose': verbose,
-            'world': world,
-        }.items())
+    gzserver = ExecuteProcess(
+        cmd=[
+            'gzserver',
+            world,
+            '--verbose',
+            '-s', 'libgazebo_ros_init.so',
+            '-s', 'libgazebo_ros_factory.so',
+            '-s', 'libgazebo_ros_force_system.so',
+        ],
+        output='screen')
 
     gzclient = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(gzclient_launch),
@@ -84,6 +88,7 @@ def generate_launch_description():
             '-R', roll,
             '-P', pitch,
             '-Y', yaw,
+            '-timeout', '90',
         ],
         output='screen')
 
@@ -166,14 +171,23 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'gazebo_master_uri',
-            default_value='http://127.0.0.1:11346',
+            default_value='http://127.0.0.1:11345',
             description='Gazebo master URI used by gzserver and gzclient'),
         AppendEnvironmentVariable(
             'GAZEBO_RESOURCE_PATH',
             '/usr/share/gazebo-11'),
         AppendEnvironmentVariable(
+            'GAZEBO_RESOURCE_PATH',
+            navflex_bringup_dir),
+        AppendEnvironmentVariable(
             'GAZEBO_MODEL_PATH',
             '/usr/share/gazebo-11/models'),
+        AppendEnvironmentVariable(
+            'GAZEBO_MODEL_PATH',
+            os.path.join(navflex_bringup_dir, 'models')),
+        AppendEnvironmentVariable(
+            'GAZEBO_MODEL_PATH',
+            os.path.dirname(tb3_manip_gazebo_dir)),
         AppendEnvironmentVariable(
             'GAZEBO_MODEL_PATH',
             os.path.join(tb3_manip_gazebo_dir, 'models')),
