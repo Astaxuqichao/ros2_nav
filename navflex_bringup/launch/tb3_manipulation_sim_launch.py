@@ -1,4 +1,5 @@
 import os
+import getpass
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -23,6 +24,10 @@ def generate_launch_description():
     navflex_bringup_dir = get_package_share_directory('navflex_bringup')
     tb3_manip_gazebo_dir = get_package_share_directory('turtlebot3_manipulation_gazebo')
     gazebo_ros_dir = get_package_share_directory('gazebo_ros')
+    current_user = getpass.getuser()
+    rtshader_cache_dir = os.path.join(
+        '/tmp', f'gazebo-{current_user}-rtshaderlibcache')
+    os.makedirs(rtshader_cache_dir, mode=0o700, exist_ok=True)
 
     world = LaunchConfiguration('world')
     map_yaml_file = LaunchConfiguration('map')
@@ -171,8 +176,14 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'gazebo_master_uri',
-            default_value='http://127.0.0.1:11345',
+            default_value='http://127.0.0.1:11346',
             description='Gazebo master URI used by gzserver and gzclient'),
+        SetEnvironmentVariable(
+            'USER',
+            current_user),
+        SetEnvironmentVariable(
+            'LOGNAME',
+            current_user),
         AppendEnvironmentVariable(
             'GAZEBO_RESOURCE_PATH',
             '/usr/share/gazebo-11'),
@@ -182,9 +193,6 @@ def generate_launch_description():
         AppendEnvironmentVariable(
             'GAZEBO_MODEL_PATH',
             '/usr/share/gazebo-11/models'),
-        AppendEnvironmentVariable(
-            'GAZEBO_MODEL_PATH',
-            os.path.join(navflex_bringup_dir, 'models')),
         AppendEnvironmentVariable(
             'GAZEBO_MODEL_PATH',
             os.path.dirname(tb3_manip_gazebo_dir)),
@@ -203,12 +211,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'world',
             default_value=os.path.join(
-                navflex_bringup_dir, 'worlds', 'large_bright_room.world'),
+                tb3_manip_gazebo_dir, 'worlds', 'turtlebot3_home_service_challenge.world'),
             description='Gazebo world file'),
         DeclareLaunchArgument(
             'map',
             default_value=os.path.join(
-                navflex_bringup_dir, 'maps', 'large_bright_room.yaml'),
+                navflex_bringup_dir, 'maps', 'tb3_home_service_challenge.yaml'),
             description='Map yaml file loaded by nav2_map_server'),
         DeclareLaunchArgument(
             'verbose',
