@@ -17,6 +17,7 @@ install(DIRECTORY rviz
 
 install(PROGRAMS
   scripts/odom_fake_localization.py
+  scripts/publish_geojson_marker_array.py
   DESTINATION lib/${PROJECT_NAME})
 
 ament_package()

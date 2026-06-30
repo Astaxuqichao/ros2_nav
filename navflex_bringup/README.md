@@ -48,6 +48,7 @@ sudo apt install \
 | `src/turtlebot3_manipulation` | TurtleBot3 机械臂相关包 |
 | `src/turtlebot3_simulations` | TurtleBot3 / TB3 manipulation Gazebo 仿真包 |
 | `src/turtlebot3_msgs` | TurtleBot3 消息包 |
+| `src/aws-robomaker-small-house-world-ros2` | AWS Small House Gazebo world、模型和配套地图 |
 
 如果从新工作区准备依赖，建议使用 `rosdep` 补齐系统包：
 
@@ -142,7 +143,7 @@ ros2 topic hz /global_costmap/costmap
 
 ## TB3 Manipulation Gazebo 仿真
 
-`tb3_manipulation_sim_launch.py` 启动 TurtleBot3 Waffle Pi + OpenMANIPULATOR-X Gazebo 仿真。TB3 是差速底盘，不是全向底盘，导航时应使用 `chassis_model:=diff`。
+`tb3_manipulation_sim_launch.py` 启动 TurtleBot3 Waffle Pi + OpenMANIPULATOR-X Gazebo 仿真。默认场景已切换到 AWS RoboMaker Small House World，并加载其 `turtlebot3_waffle_pi` 地图。TB3 是差速底盘，不是全向底盘，导航时应使用 `chassis_model:=diff`。
 
 ### 1. 启动 Gazebo 仿真
 
@@ -162,6 +163,8 @@ ros2 launch navflex_bringup tb3_manipulation_sim_launch.py
 - `odom_fake_localization.py`
 - RViz
 - ros2_control controller spawner
+
+启动文件会自动把 AWS Small House 的资源目录加入 `GAZEBO_RESOURCE_PATH` 和 `GAZEBO_MODEL_PATH`，因此 Gazebo 能直接找到 `small_house.world` 和相关模型。
 
 默认 TF 链路：
 
@@ -208,10 +211,10 @@ gzclient
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `world` | `turtlebot3_manipulation_gazebo/worlds/turtlebot3_home_service_challenge.world` | Gazebo world |
-| `map` | `maps/tb3_home_service_challenge.yaml` | map_server 加载的地图 |
+| `world` | `aws_robomaker_small_house_world/worlds/small_house.world` | Gazebo world |
+| `map` | `aws_robomaker_small_house_world/maps/turtlebot3_waffle_pi/map.yaml` | map_server 加载的地图 |
 | `verbose` | `true` | 是否输出 Gazebo server 详细日志 |
-| `gazebo_master_uri` | `http://127.0.0.1:11346` | Gazebo master 地址 |
+| `gazebo_master_uri` | `http://localhost:11345` | Gazebo master 地址 |
 | `gui` | `false` | 是否启动 Gazebo GUI |
 | `rviz` | `true` | 是否启动 RViz |
 | `rviz_config` | `rviz/nav2_default_view.rviz` | RViz 配置 |
@@ -229,6 +232,13 @@ TB3 差速参数摘要：
 | 最大线速度 | `0.26 m/s` |
 | 最大角速度 | `1.82 rad/s` |
 | 导航半径 | `0.22 m` |
+
+TB3 差速参数文件 `params/nav2_params_tb3_diff.yaml` 当前使用 `/scan` 作为 local/global costmap 的障碍观测源，传感器类型为 `LaserScan`。默认目标容差为：
+
+| 参数 | 值 |
+| --- | --- |
+| `default_xy_goal_tolerance` | `0.08 m` |
+| `default_yaw_goal_tolerance` | `0.2 rad` |
 
 ## Navflex 导航栈
 
@@ -271,6 +281,48 @@ lifecycle 激活顺序：
 3. `velocity_smoother`
 4. `bt_navigator`
 
+## GeoJSON 语义标注可视化
+
+`navflex_bringup` 提供 `publish_geojson_marker_array.py`，可将 GeoJSON 中的点、线和区域发布为 RViz `MarkerArray`。默认文件为：
+
+```text
+navflex_bringup/maps/aws_small_house_semantics.geojson
+```
+
+启动：
+
+```bash
+ros2 run navflex_bringup publish_geojson_marker_array.py
+```
+
+RViz 中添加 `MarkerArray`，topic 选择：
+
+```text
+/geojson_marker_array
+```
+
+常用参数：
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `geojson_file` | `maps/aws_small_house_semantics.geojson` | GeoJSON 文件；不存在时回退到 `params/sample_graph.geojson` |
+| `topic` | `/geojson_marker_array` | MarkerArray 发布话题 |
+| `frame_id` | `map` | Marker 坐标系 |
+| `publish_once` | `false` | 是否只发布一次 |
+| `publish_period` | `1.0` | 循环发布周期，单位秒 |
+| `line_width` | `0.08` | 线/区域边界宽度 |
+| `node_scale` | `0.35` | 点标记尺寸 |
+| `z` | `0.03` | 未显式提供 z 坐标时的高度 |
+| `show_labels` | `true` | 是否显示文字标签 |
+
+使用自定义语义图：
+
+```bash
+ros2 run navflex_bringup publish_geojson_marker_array.py --ros-args \
+  -p geojson_file:=/absolute/path/to/semantics.geojson \
+  -p frame_id:=map
+```
+
 ## 行为树和 FollowPath 容差
 
 Navflex 使用自定义 `NavflexExePathAction` 调用 `/follow_path`。`FollowPath.action` 支持：
@@ -284,6 +336,8 @@ Navflex 使用自定义 `NavflexExePathAction` 调用 `/follow_path`。`FollowPa
 - `default_yaw_goal_tolerance`
 
 控制器内部仍使用 `nav2_core::GoalChecker`。每个新的 FollowPath goal 会根据 action goal 的容差生成对应的 goal checker。同 controller、同 resolved 容差的新 path 会原地更新，不重启控制器；容差变化时才重建 goal checker 和 controller execution。
+
+调试 `/follow_path` 时，日志会打印 path 起点和终点的 `(x, y, yaw)` 以及最终使用的容差，便于确认行为树传入的目标姿态和参数默认值是否符合预期。
 
 ## 常用检查命令
 
@@ -306,9 +360,9 @@ ros2 run tf2_ros tf2_echo odom base_link
 ```bash
 ros2 topic hz /map
 ros2 topic hz /scan
-ros2 topic hz /scan_cloud
 ros2 topic hz /local_costmap/costmap
 ros2 topic hz /global_costmap/costmap
+ros2 topic echo /geojson_marker_array --once
 ```
 
 检查仿真时间：

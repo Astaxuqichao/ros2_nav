@@ -22,6 +22,7 @@
   <depend>nav_msgs</depend>
   <depend>rclpy</depend>
   <depend>tf2_ros</depend>
+  <depend>visualization_msgs</depend>
   <depend>navflex_bt_navigator</depend>
   <depend>navflex_costmap_nav</depend>
   <depend>omni_fake_node</depend>

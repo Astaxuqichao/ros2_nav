@@ -341,6 +341,10 @@ void ControllerCostmapServer::callActionFollowPath(
 
   const auto& start = normalized_path.poses.front().pose.position;
   const auto& end = normalized_path.poses.back().pose.position;
+  const double start_yaw =
+      tf2::getYaw(normalized_path.poses.front().pose.orientation);
+  const double goal_yaw =
+      tf2::getYaw(normalized_path.poses.back().pose.orientation);
   double default_xy_goal_tolerance = 0.25;
   double default_yaw_goal_tolerance = 0.25;
   get_parameter("default_xy_goal_tolerance", default_xy_goal_tolerance);
@@ -356,10 +360,11 @@ void ControllerCostmapServer::callActionFollowPath(
   RCLCPP_INFO(
       get_logger(),
       "[FollowPath] calling controller plugin id=%s poses=%zu frame=%s "
-      "start=(%.2f, %.2f) goal=(%.2f, %.2f) tolerance=(%.3f, %.3f)%s",
+      "start=(%.2f, %.2f, %.2f) goal=(%.2f, %.2f, %.2f) "
+      "tolerance=(%.3f, %.3f)%s",
       controller_id.c_str(),
       normalized_path.poses.size(), normalized_path.header.frame_id.c_str(),
-      start.x, start.y, end.x, end.y,
+      start.x, start.y, start_yaw, end.x, end.y, goal_yaw,
       xy_goal_tolerance, yaw_goal_tolerance,
       use_default_goal_tolerance ? " from defaults" : " from action goal");
 

@@ -1,0 +1,335 @@
+{
+  "type": "FeatureCollection",
+  "name": "aws_small_house_semantics",
+  "properties": {
+    "frame_id": "map",
+    "map": "aws_robomaker_small_house_world/maps/turtlebot3_waffle_pi/map.yaml",
+    "description": "Initial semantic regions for AWS RoboMaker Small House World. Coordinates are in the ROS map frame and should be refined in RViz if needed."
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "kitchen",
+        "name": "kitchen",
+        "label": "\u53a8\u623f",
+        "category": "room",
+        "nav_goal": [7.2, -2.2, 0.0],
+        "aliases": ["kitchen", "\u53a8\u623f"]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [4.9, -5.8],
+          [9.8, -5.8],
+          [9.8, -0.4],
+          [4.9, -0.4],
+          [4.9, -5.8]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "dining_room",
+        "name": "dining_room",
+        "label": "\u9910\u5385",
+        "category": "room",
+        "nav_goal": [6.4, 1.7, 0.0],
+        "aliases": ["dining room", "dining", "\u9910\u5385"]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [4.8, -0.4],
+          [8.8, -0.4],
+          [8.8, 2.5],
+          [4.8, 2.5],
+          [4.8, -0.4]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "living_room",
+        "name": "living_room",
+        "label": "\u5ba2\u5385",
+        "category": "room",
+        "nav_goal": [1.2, -2.8, 1.57],
+        "aliases": ["living room", "living", "\u5ba2\u5385"]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-2.5, -5.8],
+          [4.8, -5.8],
+          [4.8, 0.2],
+          [-2.5, 0.2],
+          [-2.5, -5.8]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "bedroom",
+        "name": "bedroom",
+        "label": "\u5367\u5ba4",
+        "category": "room",
+        "nav_goal": [-5.9, 1.3, 0.0],
+        "aliases": ["bedroom", "\u5367\u5ba4"]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-9.2, 0.6],
+          [-2.5, 0.6],
+          [-2.5, 4.5],
+          [-9.2, 4.5],
+          [-9.2, 0.6]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "study",
+        "name": "study",
+        "label": "\u4e66\u623f",
+        "category": "room",
+        "nav_goal": [-7.2, -0.2, 0.0],
+        "aliases": ["study", "office", "\u4e66\u623f"]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-9.2, -1.6],
+          [-2.5, -1.6],
+          [-2.5, 0.6],
+          [-9.2, 0.6],
+          [-9.2, -1.6]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "gym",
+        "name": "gym",
+        "label": "\u5065\u8eab\u533a",
+        "category": "room",
+        "nav_goal": [3.0, 2.7, -1.57],
+        "aliases": ["gym", "fitness", "\u5065\u8eab\u533a"]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [1.8, 1.2],
+          [4.8, 1.2],
+          [4.8, 4.5],
+          [1.8, 4.5],
+          [1.8, 1.2]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "balcony",
+        "name": "balcony",
+        "label": "\u9633\u53f0",
+        "category": "room",
+        "nav_goal": [-0.5, 3.4, -1.57],
+        "aliases": ["balcony", "\u9633\u53f0"]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-2.5, 1.2],
+          [1.8, 1.2],
+          [1.8, 4.5],
+          [-2.5, 4.5],
+          [-2.5, 1.2]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "hallway",
+        "name": "hallway",
+        "label": "\u8d70\u5eca",
+        "category": "connector",
+        "nav_goal": [3.6, 0.8, 0.0],
+        "aliases": ["hallway", "corridor", "\u8d70\u5eca"]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-2.5, 0.2],
+          [4.8, 0.2],
+          [4.8, 1.2],
+          [-2.5, 1.2],
+          [-2.5, 0.2]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "entryway",
+        "name": "entryway",
+        "label": "\u5165\u53e3",
+        "category": "connector",
+        "nav_goal": [4.8, -4.8, 1.57],
+        "aliases": ["entryway", "entrance", "\u5165\u53e3"]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [3.8, -5.8],
+          [6.3, -5.8],
+          [6.3, -4.2],
+          [3.8, -4.2],
+          [3.8, -5.8]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "kitchen_goal",
+        "name": "kitchen",
+        "label": "\u53a8\u623f",
+        "category": "nav_goal",
+        "room": "kitchen",
+        "yaw": 0.0
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [7.2, -2.2, 0.05]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "dining_room_goal",
+        "name": "dining_room",
+        "label": "\u9910\u5385",
+        "category": "nav_goal",
+        "room": "dining_room",
+        "yaw": 0.0
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [6.4, 1.7, 0.05]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "living_room_goal",
+        "name": "living_room",
+        "label": "\u5ba2\u5385",
+        "category": "nav_goal",
+        "room": "living_room",
+        "yaw": 1.57
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [1.2, -2.8, 0.05]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "bedroom_goal",
+        "name": "bedroom",
+        "label": "\u5367\u5ba4",
+        "category": "nav_goal",
+        "room": "bedroom",
+        "yaw": 0.0
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-5.9, 1.3, 0.05]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "study_goal",
+        "name": "study",
+        "label": "\u4e66\u623f",
+        "category": "nav_goal",
+        "room": "study",
+        "yaw": 0.0
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-7.2, -0.2, 0.05]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "gym_goal",
+        "name": "gym",
+        "label": "\u5065\u8eab\u533a",
+        "category": "nav_goal",
+        "room": "gym",
+        "yaw": -1.57
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [3.0, 2.7, 0.05]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "balcony_goal",
+        "name": "balcony",
+        "label": "\u9633\u53f0",
+        "category": "nav_goal",
+        "room": "balcony",
+        "yaw": -1.57
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-0.5, 3.4, 0.05]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "hallway_goal",
+        "name": "hallway",
+        "label": "\u8d70\u5eca",
+        "category": "nav_goal",
+        "room": "hallway",
+        "yaw": 0.0
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [3.6, 0.8, 0.05]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "entryway_goal",
+        "name": "entryway",
+        "label": "\u5165\u53e3",
+        "category": "nav_goal",
+        "room": "entryway",
+        "yaw": 1.57
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [4.8, -4.8, 0.05]
+      }
+    }
+  ]
+}

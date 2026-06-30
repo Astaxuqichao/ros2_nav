@@ -23,6 +23,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 def generate_launch_description():
     navflex_bringup_dir = get_package_share_directory('navflex_bringup')
     tb3_manip_gazebo_dir = get_package_share_directory('turtlebot3_manipulation_gazebo')
+    aws_house_dir = get_package_share_directory('aws_robomaker_small_house_world')
     gazebo_ros_dir = get_package_share_directory('gazebo_ros')
     current_user = getpass.getuser()
     rtshader_cache_dir = os.path.join(
@@ -176,7 +177,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'gazebo_master_uri',
-            default_value='http://127.0.0.1:11346',
+            default_value='http://localhost:11345',
             description='Gazebo master URI used by gzserver and gzclient'),
         SetEnvironmentVariable(
             'USER',
@@ -191,8 +192,14 @@ def generate_launch_description():
             'GAZEBO_RESOURCE_PATH',
             navflex_bringup_dir),
         AppendEnvironmentVariable(
+            'GAZEBO_RESOURCE_PATH',
+            aws_house_dir),
+        AppendEnvironmentVariable(
             'GAZEBO_MODEL_PATH',
             '/usr/share/gazebo-11/models'),
+        AppendEnvironmentVariable(
+            'GAZEBO_MODEL_PATH',
+            os.path.join(aws_house_dir, 'models')),
         AppendEnvironmentVariable(
             'GAZEBO_MODEL_PATH',
             os.path.dirname(tb3_manip_gazebo_dir)),
@@ -211,12 +218,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'world',
             default_value=os.path.join(
-                tb3_manip_gazebo_dir, 'worlds', 'turtlebot3_home_service_challenge.world'),
+                aws_house_dir, 'worlds', 'small_house.world'),
             description='Gazebo world file'),
         DeclareLaunchArgument(
             'map',
             default_value=os.path.join(
-                navflex_bringup_dir, 'maps', 'tb3_home_service_challenge.yaml'),
+                aws_house_dir, 'maps', 'turtlebot3_waffle_pi', 'map.yaml'),
             description='Map yaml file loaded by nav2_map_server'),
         DeclareLaunchArgument(
             'verbose',

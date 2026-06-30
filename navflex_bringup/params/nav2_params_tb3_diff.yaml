@@ -14,8 +14,8 @@ navflex_controller_server:
     min_y_velocity_threshold: 0.001
     min_theta_velocity_threshold: 0.001
     failure_tolerance: 0.3
-    default_xy_goal_tolerance: 0.05
-    default_yaw_goal_tolerance: 0.1
+    default_xy_goal_tolerance: 0.08
+    default_yaw_goal_tolerance: 0.2
     controller_plugins: ["FollowPath"]
 
     # DWB parameters
@@ -198,8 +198,8 @@ local_costmap:
         map_save_duration:     60.0   #default 60s, how often to autosave
         observation_sources:   rgbd1_mark
         rgbd1_mark:
-          data_type: PointCloud2
-          topic: /scan_cloud
+          data_type: LaserScan
+          topic: /scan
           marking: true
           clearing: false
           min_obstacle_height: -2.0     #default 0, meters
@@ -271,8 +271,8 @@ global_costmap:
         map_save_duration:     60.0   #default 60s, how often to autosave
         observation_sources:   rgbd1_mark
         rgbd1_mark:
-          data_type: PointCloud2
-          topic: /scan_cloud
+          data_type: LaserScan
+          topic: /scan
           marking: true
           clearing: false
           min_obstacle_height: -2.0     #default 0, meters
