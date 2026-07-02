@@ -6,6 +6,7 @@ navflex_controller_server:
     controller_max_retries: -1
     controller_stuck_timeout: 60.0
     controller_stuck_distance: 0.05
+    controller_required_consecutive_valid_cmds: 10
     cmd_vel_topic: "cmd_vel_nav"
     robot_frame: "base_link"
     map_frame: "map"

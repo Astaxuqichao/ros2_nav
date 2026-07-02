@@ -27,6 +27,8 @@ ControllerExecution::ControllerExecution(
       moving_(false),
       patience_(0, 0),
       max_retries_(-1),
+      required_consecutive_valid_cmds_(10),
+      consecutive_valid_cmds_(0),
       xy_goal_tolerance_(xy_goal_tolerance),
       yaw_goal_tolerance_(yaw_goal_tolerance),
       frequency_(DEFAULT_CONTROLLER_FREQUENCY),
@@ -42,6 +44,10 @@ ControllerExecution::ControllerExecution(
   if (!node_handle_->has_parameter("controller_max_retries")) {
     node_handle_->declare_parameter("controller_max_retries",
                                     rclcpp::ParameterValue(-1));
+  }
+  if (!node_handle_->has_parameter("controller_required_consecutive_valid_cmds")) {
+    node_handle_->declare_parameter("controller_required_consecutive_valid_cmds",
+                                    rclcpp::ParameterValue(10));
   }
   if (!node_handle_->has_parameter("robot_frame")) {
     node_handle_->declare_parameter("robot_frame",
@@ -63,6 +69,11 @@ ControllerExecution::ControllerExecution(
   node_handle_->get_parameter("controller_patience", patience);
   patience_ = rclcpp::Duration::from_seconds(patience);
   node_handle_->get_parameter("controller_max_retries", max_retries_);
+  int required_consecutive_valid_cmds;
+  node_handle_->get_parameter(
+      "controller_required_consecutive_valid_cmds",
+      required_consecutive_valid_cmds);
+  setRequiredConsecutiveValidCmds(required_consecutive_valid_cmds);
 
   RCLCPP_DEBUG(node_handle_->get_logger(), "[ControllerExecution] Constructed for %s", name_.c_str());
   dyn_params_handler_ = node_handle_->add_on_set_parameters_callback(
@@ -82,6 +93,17 @@ bool ControllerExecution::setControllerFrequency(double frequency) {
   return true;
 }
 
+bool ControllerExecution::setRequiredConsecutiveValidCmds(int count) {
+  if (count < 1) {
+    RCLCPP_ERROR(node_handle_->get_logger(),
+                 "controller_required_consecutive_valid_cmds must be >= 1! Keeping current value.");
+    return false;
+  }
+  required_consecutive_valid_cmds_ = count;
+  consecutive_valid_cmds_ = 0;
+  return true;
+}
+
 rcl_interfaces::msg::SetParametersResult ControllerExecution::reconfigure(
     std::vector<rclcpp::Parameter> parameters) {
   std::lock_guard<std::mutex> guard(configuration_mutex_);
@@ -93,6 +115,8 @@ rcl_interfaces::msg::SetParametersResult ControllerExecution::reconfigure(
       patience_ = rclcpp::Duration::from_seconds(param.as_double());
     } else if (param.get_name() == "controller_max_retries") {
       max_retries_ = param.as_int();
+    } else if (param.get_name() == "controller_required_consecutive_valid_cmds") {
+      setRequiredConsecutiveValidCmds(param.as_int());
     }
   }
   result.successful = true;
@@ -241,6 +265,10 @@ void ControllerExecution::run() {
     last_valid_cmd_time_ = node_handle_->now();
     last_call_time_ = node_handle_->now();
   }
+  {
+    std::lock_guard<std::mutex> guard(configuration_mutex_);
+    consecutive_valid_cmds_ = 0;
+  }
 
   int retries = 0;
 
@@ -368,9 +396,27 @@ void ControllerExecution::run() {
       }
       vel_pub_->publish(cmd_vel_stamped.twist);
       RCLCPP_DEBUG(node_handle_->get_logger(), "[ControllerExecution] Published velocity (%.3f, %.3f, %.3f) for %s", cmd_vel_stamped.twist.linear.x, cmd_vel_stamped.twist.linear.y, cmd_vel_stamped.twist.angular.z, name_.c_str());
+      bool refresh_patience = false;
+      bool log_first_refresh = false;
+      int required_consecutive_valid_cmds = 0;
       {
+        std::lock_guard<std::mutex> guard(configuration_mutex_);
+        ++consecutive_valid_cmds_;
+        refresh_patience =
+            consecutive_valid_cmds_ >= required_consecutive_valid_cmds_;
+        log_first_refresh =
+            consecutive_valid_cmds_ == required_consecutive_valid_cmds_;
+        required_consecutive_valid_cmds = required_consecutive_valid_cmds_;
+      }
+      if (refresh_patience) {
         std::lock_guard<std::mutex> guard(lct_mtx_);
         last_valid_cmd_time_ = node_handle_->now();
+      }
+      if (log_first_refresh) {
+        RCLCPP_DEBUG(
+            node_handle_->get_logger(),
+            "[ControllerExecution] Refreshed patience after %d consecutive valid commands for %s",
+            required_consecutive_valid_cmds, name_.c_str());
       }
       retries = 0;
       setState(GOT_LOCAL_CMD);
@@ -383,6 +429,7 @@ void ControllerExecution::run() {
       continue;
     } else {
       std::lock_guard<std::mutex> guard(configuration_mutex_);
+      consecutive_valid_cmds_ = 0;
       if (max_retries_ >= 0 && ++retries > max_retries_) {
         setState(MAX_RETRIES);
         publishZeroVelocity();

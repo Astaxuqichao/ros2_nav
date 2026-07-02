@@ -20,6 +20,48 @@ Navflex 是基于 ROS 2 Humble 和 Nav2 的导航扩展包集合。它把 costma
 | `simulation_lidar` | 基于 OccupancyGrid 地图射线投射的 2D 仿真激光雷达，发布 `/scan` 和 `/scan_cloud` |
 | `rcl_logging_spdlog_rotating` | 自定义 ROS 2 spdlog 滚动日志后端 |
 
+## navflex_costmap_nav 设计
+
+`navflex_costmap_nav` 是 Navflex 的核心导航执行层。它没有直接复用 Nav2 的整套
+planner/controller/behavior server 进程组合，而是在一个 `CostmapNavNode`
+lifecycle 节点里统一管理 costmap、插件服务器和 action 执行，从而让 Navflex 可以在
+同一套生命周期下协调规划、控制、行为恢复和代价地图查询。
+
+顶层结构如下：
+
+```text
+CostmapNavNode (nav2_util::LifecycleNode)
+├── global_costmap  -> PlannerCostmapServer    -> nav2_core::GlobalPlanner
+├── local_costmap   -> ControllerCostmapServer -> nav2_core::Controller
+└── global/local    -> BehaviorCostmapServer   -> nav2_core::Behavior
+```
+
+核心设计点：
+
+- **统一生命周期**：`CostmapNavNode` 由 `lifecycle_manager` 驱动
+  `configure -> activate -> deactivate -> cleanup`，在各阶段统一创建、激活、
+  停止和释放 global/local costmap、Planner、Controller、Behavior server。
+- **复用 Nav2 插件体系**：全局规划、路径跟踪和行为恢复仍通过
+  `nav2_core::GlobalPlanner`、`nav2_core::Controller`、`nav2_core::Behavior`
+  插件接口扩展，Navflex 主要负责执行编排和 action 封装。
+- **分离 costmap 与执行线程**：global/local costmap 各自运行在独立
+  `NodeThread` 中；三个 server 也分别运行在独立 `NodeThread` 中，避免代价地图更新、
+  action 接收和长时间执行互相阻塞。
+- **Action/Execution 双层抽象**：`NavflexActionBase<Action, Execution>` 负责
+  action goal、cancel、并发槽位和结果回传；具体 `PlannerExecution`、
+  `ControllerExecution`、`BehaviorExecution` 负责调用插件完成实际任务。
+- **并发槽位模型**：action goal 可通过 `concurrency_slot` 分配到 0-255 号槽位。
+  同一槽位的新任务会替换旧任务，不同槽位可并行执行，便于后续扩展多任务或分组控制。
+- **控制层运行时能力**：`/follow_path` 支持运行中路径更新、到点容差透传，以及卡困检测；
+  卡困时会以明确结果码 abort，并在结果消息中给出位移、耗时和阈值。
+- **代价地图查询服务**：节点激活后提供 `check_point_cost`、`check_pose_cost`、
+  `check_path_cost`，可直接查询点、位姿或路径在 global/local costmap 中的通行状态。
+- **路网导航扩展**：可选接入 `nav2_route`，在拓扑图上规划路网路径，再转成
+  `nav_msgs/Path` 交给 `FollowPath` 执行。
+
+更完整的类关系、线程模型和回调链见
+[navflex_costmap_nav/docs/ARCHITECTURE.md](navflex_costmap_nav/docs/ARCHITECTURE.md)。
+
 ## 主要依赖
 
 - ROS 2 Humble

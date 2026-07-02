@@ -153,6 +153,7 @@ class ControllerExecution : public NavflexExecutionBase {
   void setState(ControllerState state);
   void publishZeroVelocity();
   bool setControllerFrequency(double frequency);
+  bool setRequiredConsecutiveValidCmds(int count);
 
   // Plugin
   nav2_core::Controller::Ptr controller_;
@@ -190,6 +191,8 @@ class ControllerExecution : public NavflexExecutionBase {
   double frequency_;
   rclcpp::Duration patience_;
   int max_retries_;
+  int required_consecutive_valid_cmds_;
+  int consecutive_valid_cmds_;
   double xy_goal_tolerance_;
   double yaw_goal_tolerance_;
 

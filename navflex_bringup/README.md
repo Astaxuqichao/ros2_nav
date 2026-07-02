@@ -259,7 +259,7 @@ ros2 launch navflex_bringup navflex_bringup_launch.py
 | `default_nav_to_pose_bt_xml` | `navflex_bt_navigator/behavior_trees/test_bt_navigator.xml` | 默认行为树 |
 | `autostart` | `true` | 自动激活 lifecycle 节点 |
 | `use_respawn` | `False` | 非 composition 模式下崩溃重启 `navflex_costmap_nav` |
-| `use_composition` | `False` | 使用组件容器启动核心节点 |
+| `use_composition` | `true` | 使用组件容器启动核心节点 |
 | `container_name` | `navflex_container` | 组件容器名称 |
 | `log_level` | `info` | 日志等级 |
 | `use_route_server` | `False` | 是否启动 `nav2_route` |

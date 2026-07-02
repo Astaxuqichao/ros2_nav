@@ -225,7 +225,7 @@ def generate_launch_description():
                               description='Automatically configure and activate lifecycle nodes'),
         DeclareLaunchArgument('use_respawn', default_value='False',
                               description='Respawn navflex_costmap_nav if it exits'),
-        DeclareLaunchArgument('use_composition', default_value='False',
+        DeclareLaunchArgument('use_composition', default_value='true',
                               description='Load navflex_costmap_nav, bt_navigator, and lifecycle_manager_navflex into a component container'),
         DeclareLaunchArgument('container_name', default_value='navflex_container',
                               description='Component container name when use_composition is True'),
